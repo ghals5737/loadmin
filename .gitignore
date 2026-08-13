@@ -1,0 +1,13 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+out/
+.vscode/
+
+# macOS
+.DS_Store
