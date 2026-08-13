@@ -3,3 +3,13 @@ loadmin:
 
 server:
   port: 8080
+  tomcat:
+    # Off by default since Boot 2.2; required for tomcat.threads.* metrics.
+    mbeanregistry:
+      enabled: true
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:demo;DB_CLOSE_DELAY=-1
+    hikari:
+      maximum-pool-size: 10

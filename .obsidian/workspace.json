@@ -1,0 +1,202 @@
+{
+  "main": {
+    "id": "665fb8d3073b46c2",
+    "type": "split",
+    "children": [
+      {
+        "id": "76c5bc8e6bc7c556",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "fe4d64df57a8552d",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "CLAUDE.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "CLAUDE"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "e52f447d7300a931",
+    "type": "split",
+    "children": [
+      {
+        "id": "eb43e02acfe803eb",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "6f2cd01458232b81",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "파일 탐색기"
+            }
+          },
+          {
+            "id": "0739d4334e20bc5a",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "검색"
+            }
+          },
+          {
+            "id": "da43e651e3d3856d",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "북마크"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "a62a3d1f9bb7143a",
+    "type": "split",
+    "children": [
+      {
+        "id": "b99b19092dfaff12",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "7c3ea1a5722736af",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "CLAUDE.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "CLAUDE 의 백링크"
+            }
+          },
+          {
+            "id": "1a7e3e7b9b22d4bc",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "CLAUDE.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "CLAUDE 의 나가는 링크"
+            }
+          },
+          {
+            "id": "6134cbcd87bc42ae",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "태그"
+            }
+          },
+          {
+            "id": "467e9cf562e9d4e3",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "모든 속성"
+            }
+          },
+          {
+            "id": "e0c78c393add9ecf",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "CLAUDE.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "CLAUDE 의 개요"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:빠른 전환기 열기": false,
+      "graph:그래프 뷰 열기": false,
+      "canvas:새 캔버스 만들기": false,
+      "daily-notes:오늘의 일일 노트 열기": false,
+      "templates:템플릿 삽입": false,
+      "command-palette:명령어 팔레트 열기": false,
+      "bases:새 베이스 생성하기": false
+    }
+  },
+  "active": "fe4d64df57a8552d",
+  "lastOpenFiles": [
+    "docs/screenshot-metrics.png",
+    "docs/screenshot-run.png",
+    "docs",
+    "loadmin-demo/build/tmp/compileJava/compileTransaction/stash-dir/SampleApiController.class.uniqueId0",
+    "loadmin-demo/src/main/java/io/github/ghals5737/loadmin/demo/SampleApiController.java.tmp.67088.d999e0901f52",
+    "loadmin-demo/build/tmp/compileJava/compileTransaction/stash-dir",
+    "loadmin-demo/build/tmp/compileJava/compileTransaction/backup-dir",
+    "loadmin-demo/build/tmp/compileJava/compileTransaction",
+    "loadmin-demo/build/resources/main/schema.sql",
+    "loadmin-demo/build/resources/main/data.sql",
+    "loadmin-spring-boot-starter/build/classes/java/main/io/github/ghals5737/loadmin/autoconfigure/LoadminRunController.class",
+    "loadmin-spring-boot-starter/build/classes/java/main/io/github/ghals5737/loadmin/autoconfigure/LoadminRunController$StartRunRequest.class",
+    "README.md"
+  ]
+}

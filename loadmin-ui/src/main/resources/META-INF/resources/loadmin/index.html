@@ -6,30 +6,67 @@
 <title>loadmin</title>
 <style>
   :root {
-    --bg: #f6f7f9; --card: #ffffff; --text: #1c2330; --muted: #6b7484;
-    --border: #e3e6eb; --accent: #2563eb;
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --baseline: #c3c2b7;
+    --border: rgba(11, 11, 11, 0.10);
+    --series-1: #2a78d6;   /* categorical slot 1: blue */
+    --series-2: #eb6834;   /* categorical slot 2: orange */
+    --p50: #6da7ec;        /* blue ordinal step 300 */
+    --p95: #1c5cab;        /* blue ordinal step 550 */
+    --status-critical: #d03b3b;
+    --status-good: #0ca30c;
+    --good-text: #006300;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --page: #0d0d0d;
+      --surface: #1a1a19;
+      --ink: #ffffff;
+      --ink-2: #c3c2b7;
+      --muted: #898781;
+      --grid: #2c2c2a;
+      --baseline: #383835;
+      --border: rgba(255, 255, 255, 0.10);
+      --series-1: #3987e5;
+      --series-2: #d95926;
+      --p50: #86b6ef;      /* blue ordinal step 250 */
+      --p95: #3987e5;      /* blue ordinal step 400 */
+      --status-critical: #d03b3b;
+      --status-good: #0ca30c;
+      --good-text: #0ca30c;
+    }
   }
   * { box-sizing: border-box; }
   body {
-    margin: 0; background: var(--bg); color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0; background: var(--page); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   }
   header {
-    padding: 20px 32px; background: var(--card); border-bottom: 1px solid var(--border);
+    padding: 18px 32px; background: var(--surface); border-bottom: 1px solid var(--border);
     display: flex; align-items: baseline; gap: 12px;
   }
   header h1 { margin: 0; font-size: 20px; }
   header .tagline { color: var(--muted); font-size: 13px; }
-  main { max-width: 880px; margin: 32px auto; padding: 0 24px; }
-  h2 { font-size: 15px; color: var(--muted); font-weight: 600; }
-  table {
-    width: 100%; border-collapse: collapse; background: var(--card);
-    border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+  main { max-width: 920px; margin: 28px auto 64px; padding: 0 24px; }
+  h2 { font-size: 14px; color: var(--ink-2); font-weight: 600; margin: 24px 0 10px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
   }
-  th, td { text-align: left; padding: 10px 16px; font-size: 14px; }
-  th { background: var(--bg); color: var(--muted); font-weight: 600; font-size: 12px;
-       text-transform: uppercase; letter-spacing: 0.04em; }
-  tr + tr td { border-top: 1px solid var(--border); }
+  table.list { width: 100%; border-collapse: collapse; }
+  table.list th, table.list td { text-align: left; padding: 10px 16px; font-size: 14px; }
+  table.list th {
+    color: var(--muted); font-weight: 600; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--border);
+  }
+  table.list tr + tr td { border-top: 1px solid var(--grid); }
   .method {
     display: inline-block; min-width: 52px; text-align: center; padding: 2px 8px;
     border-radius: 4px; font-size: 12px; font-weight: 700; color: #fff;
@@ -38,11 +75,78 @@
   .method-POST { background: #2563eb; }
   .method-PUT { background: #d97706; }
   .method-PATCH { background: #7c3aed; }
-  .method-DELETE { background: #dc2626; }
-  .method-ANY, .method-default { background: #6b7484; }
+  .method-DELETE, .method-ANY { background: #6b7484; }
   .path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .handler { color: var(--muted); font-size: 13px; }
-  .empty { padding: 32px; text-align: center; color: var(--muted); }
+  .empty { padding: 28px; text-align: center; color: var(--muted); }
+  button {
+    font: inherit; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--ink); padding: 6px 14px; cursor: pointer;
+  }
+  button.primary { background: var(--series-1); border-color: transparent; color: #fff; font-weight: 600; }
+  button.danger { color: var(--status-critical); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .linklike { border: none; background: none; color: var(--series-1); padding: 0; font-size: 13px; }
+
+  /* run config form */
+  #configSection .card { padding: 20px; }
+  .config-target { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+  .form-grid { display: grid; grid-template-columns: 1fr 140px 140px; gap: 12px; }
+  .field label { display: block; font-size: 12px; color: var(--ink-2); margin-bottom: 4px; }
+  .field input, .field textarea {
+    width: 100%; font: inherit; padding: 7px 10px; border-radius: 6px;
+    border: 1px solid var(--baseline); background: var(--page); color: var(--ink);
+  }
+  .field textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+  .field-body { grid-column: 1 / -1; }
+  .form-actions { margin-top: 16px; display: flex; gap: 10px; align-items: center; }
+  .form-error { color: var(--status-critical); font-size: 13px; }
+
+  /* run view */
+  .run-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .pill {
+    padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; color: #fff;
+  }
+  .pill-RUNNING { background: var(--series-1); }
+  .pill-COMPLETED { background: var(--status-good); }
+  .pill-STOPPED { background: var(--muted); }
+  .pill-FAILED { background: var(--status-critical); }
+  .run-target { font-family: ui-monospace, Menlo, monospace; font-size: 13px; color: var(--ink-2); }
+  .cards { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 18px; }
+  .stat { padding: 12px 14px; }
+  .stat .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .stat .value { font-size: 22px; font-weight: 650; margin-top: 2px; }
+  .stat .unit { font-size: 12px; color: var(--ink-2); font-weight: 400; }
+
+  .chart-block { padding: 14px 16px 8px; margin-bottom: 14px; position: relative; }
+  .chart-title-row { display: flex; justify-content: space-between; align-items: baseline; }
+  .chart-title { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--ink-2); }
+  .legend .chip { display: inline-flex; align-items: center; gap: 5px; }
+  .legend .swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  .legend .swatch.line { height: 3px; border-radius: 2px; }
+  svg.chart { width: 100%; height: auto; display: block; }
+  .tooltip {
+    position: absolute; pointer-events: none; display: none; z-index: 5;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px 10px; font-size: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.12);
+    min-width: 130px;
+  }
+  .tooltip .t-title { color: var(--muted); margin-bottom: 4px; }
+  .tooltip .t-row { display: flex; justify-content: space-between; gap: 12px; }
+  .tooltip .t-row .name { color: var(--ink-2); display: inline-flex; align-items: center; gap: 5px; }
+  .tooltip .t-row .val { font-variant-numeric: tabular-nums; }
+
+  details.data-table { margin-top: 6px; }
+  details.data-table summary { cursor: pointer; font-size: 13px; color: var(--ink-2); padding: 8px 4px; }
+  details.data-table table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  details.data-table th, details.data-table td {
+    text-align: right; padding: 5px 10px; font-variant-numeric: tabular-nums;
+  }
+  details.data-table th { color: var(--muted); font-weight: 600; }
+  details.data-table th:first-child, details.data-table td:first-child { text-align: left; }
+  details.data-table tr + tr td { border-top: 1px solid var(--grid); }
+  .hidden { display: none; }
 </style>
 </head>
 <body>
@@ -51,55 +155,496 @@
   <span class="tagline">load test targets discovered from <code>@LoadTest</code></span>
 </header>
 <main>
-  <h2>Endpoints</h2>
-  <table>
-    <thead>
-      <tr><th>Method</th><th>Path</th><th>Handler</th></tr>
-    </thead>
-    <tbody id="endpoints">
-      <tr><td colspan="3" class="empty">Loading…</td></tr>
-    </tbody>
-  </table>
+  <section id="endpointsSection">
+    <h2>Endpoints</h2>
+    <div class="card">
+      <table class="list">
+        <thead><tr><th>Method</th><th>Path</th><th>Handler</th><th></th></tr></thead>
+        <tbody id="endpoints">
+          <tr><td colspan="4" class="empty">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="configSection" class="hidden">
+    <h2>New load test</h2>
+    <div class="card">
+      <div class="config-target">
+        <span class="method" id="cfgMethod"></span>
+        <span class="path" id="cfgPattern"></span>
+        <button class="linklike" id="cfgBack" type="button">← back to endpoints</button>
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="cfgPath">Request path (fill in any {variables})</label>
+          <input id="cfgPath" type="text" spellcheck="false">
+        </div>
+        <div class="field">
+          <label for="cfgConcurrency">Concurrent users</label>
+          <input id="cfgConcurrency" type="number" min="1" value="10">
+        </div>
+        <div class="field">
+          <label for="cfgDuration">Duration (seconds)</label>
+          <input id="cfgDuration" type="number" min="1" value="15">
+        </div>
+        <div class="field field-body hidden" id="cfgBodyField">
+          <label for="cfgBody">JSON body</label>
+          <textarea id="cfgBody" rows="4">{}</textarea>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="primary" id="cfgStart" type="button">Start load test</button>
+        <span class="form-error" id="cfgError"></span>
+      </div>
+    </div>
+  </section>
+
+  <section id="runSection" class="hidden">
+    <div class="run-head">
+      <span class="pill" id="runStatus"></span>
+      <span class="run-target" id="runTarget"></span>
+      <span class="run-target" id="runElapsed"></span>
+      <span style="flex:1"></span>
+      <button class="danger" id="runStop" type="button">Stop</button>
+      <button class="linklike" id="runBack" type="button">← new test</button>
+    </div>
+    <div class="cards" id="summaryCards"></div>
+    <div id="charts"></div>
+    <details class="data-table card">
+      <summary>Per-second data table</summary>
+      <div id="dataTable" style="padding: 0 6px 10px;"></div>
+    </details>
+  </section>
 </main>
+
 <script>
+'use strict';
+
+/* ---------- utilities ---------- */
+
+function $(id) { return document.getElementById(id); }
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+function fmt(n, digits) {
+  if (n == null || isNaN(n)) return '–';
+  return Number(n).toLocaleString('en-US', { maximumFractionDigits: digits == null ? 0 : digits });
+}
+function cssVar(name) {
+  return 'var(' + name + ')';
+}
+
+/* ---------- chart renderer (single y-axis; charts share the x = seconds axis) ---------- */
+
+var CHART_W = 840, CHART_H = 170;
+var MARGIN = { t: 10, r: 14, b: 22, l: 48 };
+
+function niceMax(v) {
+  if (v <= 0) return 1;
+  var p = Math.pow(10, Math.floor(Math.log10(v)));
+  var m = v / p;
+  var step = m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10;
+  return step * p;
+}
+
+/**
+ * cfg: { title, unit, xMax, series: [{name, color, type: 'line'|'bar', dash, offset, values: {x: y}}], refs: [{name, y}] }
+ * All series in one chart share one y-scale — never two axes.
+ */
+function renderChart(host, cfg) {
+  var plotW = CHART_W - MARGIN.l - MARGIN.r;
+  var plotH = CHART_H - MARGIN.t - MARGIN.b;
+  var xMax = Math.max(cfg.xMax, 1);
+
+  var yRaw = 0;
+  cfg.series.forEach(function (s) {
+    Object.keys(s.values).forEach(function (x) {
+      var total = s.values[x] + (s.stackBase && s.stackBase[x] ? s.stackBase[x] : 0);
+      if (total > yRaw) yRaw = total;
+    });
+  });
+  (cfg.refs || []).forEach(function (r) { if (r.y > yRaw) yRaw = r.y; });
+  var yMax = niceMax(yRaw);
+
+  function X(x) { return MARGIN.l + (x / xMax) * plotW; }
+  function Y(y) { return MARGIN.t + plotH - (y / yMax) * plotH; }
+
+  var parts = [];
+  // gridlines + y ticks (recessive)
+  for (var g = 0; g <= 4; g++) {
+    var yv = yMax * g / 4;
+    var yy = Y(yv);
+    parts.push('<line x1="' + MARGIN.l + '" x2="' + (CHART_W - MARGIN.r) + '" y1="' + yy + '" y2="' + yy +
+      '" style="stroke:var(--grid);stroke-width:1"/>');
+    parts.push('<text x="' + (MARGIN.l - 8) + '" y="' + (yy + 3.5) + '" text-anchor="end" ' +
+      'style="fill:var(--muted);font-size:10px;font-variant-numeric:tabular-nums">' + fmt(yv, yMax < 10 ? 1 : 0) + '</text>');
+  }
+  // x ticks
+  var xStep = xMax <= 20 ? 5 : xMax <= 60 ? 10 : 30;
+  for (var xv = 0; xv <= xMax; xv += xStep) {
+    parts.push('<text x="' + X(xv) + '" y="' + (CHART_H - 6) + '" text-anchor="middle" ' +
+      'style="fill:var(--muted);font-size:10px">' + xv + 's</text>');
+  }
+  // baseline
+  parts.push('<line x1="' + MARGIN.l + '" x2="' + (CHART_W - MARGIN.r) + '" y1="' + Y(0) + '" y2="' + Y(0) +
+    '" style="stroke:var(--baseline);stroke-width:1"/>');
+
+  // reference lines (dashed, muted — annotation, not a series)
+  (cfg.refs || []).forEach(function (r) {
+    parts.push('<line x1="' + MARGIN.l + '" x2="' + (CHART_W - MARGIN.r) + '" y1="' + Y(r.y) + '" y2="' + Y(r.y) +
+      '" style="stroke:var(--muted);stroke-width:1;stroke-dasharray:4 4"/>');
+    parts.push('<text x="' + (CHART_W - MARGIN.r) + '" y="' + (Y(r.y) - 4) + '" text-anchor="end" ' +
+      'style="fill:var(--muted);font-size:10px">' + esc(r.name) + ' ' + fmt(r.y) + '</text>');
+  });
+
+  // marks
+  var barW = Math.max(2, Math.min(14, (plotW / (xMax + 1)) - 2));
+  cfg.series.forEach(function (s) {
+    if (s.type === 'bar') {
+      Object.keys(s.values).forEach(function (k) {
+        var x = +k, y = s.values[k];
+        if (y <= 0) return;
+        var base = s.stackBase && s.stackBase[k] ? s.stackBase[k] : 0;
+        var y0 = Y(base), y1 = Y(base + y);
+        var gap = base > 0 ? 2 : 0; // 2px spacer between stacked segments
+        var h = Math.max(1, y0 - y1 - gap);
+        parts.push('<rect x="' + (X(x) - barW / 2) + '" y="' + (y0 - gap - h) + '" width="' + barW +
+          '" height="' + h + '" rx="2" style="fill:' + s.color + '"/>');
+      });
+    } else {
+      var d = '';
+      Object.keys(s.values).map(Number).sort(function (a, b) { return a - b; }).forEach(function (x) {
+        d += (d ? 'L' : 'M') + X(x).toFixed(1) + ',' + Y(s.values[x]).toFixed(1);
+      });
+      if (d) {
+        parts.push('<path d="' + d + '" fill="none" style="stroke:' + s.color + ';stroke-width:2' +
+          (s.dash ? ';stroke-dasharray:5 4' : '') + '"/>');
+      }
+    }
+  });
+
+  // crosshair (hidden until hover)
+  parts.push('<line class="crosshair" x1="0" x2="0" y1="' + MARGIN.t + '" y2="' + (MARGIN.t + plotH) +
+    '" style="stroke:var(--baseline);stroke-width:1;display:none"/>');
+  parts.push('<rect class="hover-capture" x="' + MARGIN.l + '" y="' + MARGIN.t + '" width="' + plotW +
+    '" height="' + plotH + '" fill="transparent"/>');
+
+  var legend = '';
+  if (cfg.series.length > 1) {
+    legend = '<div class="legend">' + cfg.series.map(function (s) {
+      return '<span class="chip"><span class="swatch' + (s.type === 'bar' ? '' : ' line') +
+        '" style="background:' + s.color + '"></span>' + esc(s.name) + '</span>';
+    }).join('') + '</div>';
+  }
+
+  host.innerHTML =
+    '<div class="chart-title-row"><span class="chart-title">' + esc(cfg.title) +
+    (cfg.unit ? ' <span style="color:var(--muted);font-weight:400">(' + esc(cfg.unit) + ')</span>' : '') +
+    '</span>' + legend + '</div>' +
+    '<svg class="chart" viewBox="0 0 ' + CHART_W + ' ' + CHART_H + '" role="img" aria-label="' +
+    esc(cfg.title) + '">' + parts.join('') + '</svg>' +
+    '<div class="tooltip"></div>';
+
+  attachHover(host, cfg, X, xMax);
+}
+
+function attachHover(host, cfg, X, xMax) {
+  var svg = host.querySelector('svg');
+  var crosshair = svg.querySelector('.crosshair');
+  var tooltip = host.querySelector('.tooltip');
+
+  svg.addEventListener('mousemove', function (ev) {
+    var pt = svg.createSVGPoint();
+    pt.x = ev.clientX; pt.y = ev.clientY;
+    var loc = pt.matrixTransform(svg.getScreenCTM().inverse());
+    var x = Math.round((loc.x - MARGIN.l) / (CHART_W - MARGIN.l - MARGIN.r) * xMax);
+    if (x < 0 || x > xMax) { hide(); return; }
+
+    var rows = cfg.series.map(function (s) {
+      var v = s.values[x];
+      return v == null ? '' :
+        '<div class="t-row"><span class="name"><span class="swatch" style="width:8px;height:8px;border-radius:2px;background:' +
+        s.color + ';display:inline-block"></span>' + esc(s.name) + '</span><span class="val">' + fmt(v, 1) + '</span></div>';
+    }).join('');
+    if (!rows) { hide(); return; }
+
+    crosshair.setAttribute('x1', X(x));
+    crosshair.setAttribute('x2', X(x));
+    crosshair.style.display = '';
+    tooltip.innerHTML = '<div class="t-title">at ' + x + 's</div>' + rows;
+    tooltip.style.display = 'block';
+    var hostRect = host.getBoundingClientRect();
+    var left = ev.clientX - hostRect.left + 14;
+    if (left + tooltip.offsetWidth > hostRect.width - 8) {
+      left = ev.clientX - hostRect.left - tooltip.offsetWidth - 14;
+    }
+    tooltip.style.left = left + 'px';
+    tooltip.style.top = (ev.clientY - hostRect.top - 10) + 'px';
+  });
+  svg.addEventListener('mouseleave', hide);
+
+  function hide() {
+    crosshair.style.display = 'none';
+    tooltip.style.display = 'none';
+  }
+}
+
+/* ---------- endpoint list ---------- */
+
+var selectedEndpoint = null;
+
+function loadEndpoints() {
   fetch('api/endpoints')
-    .then(function (res) {
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      return res.json();
-    })
+    .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
     .then(function (endpoints) {
-      var tbody = document.getElementById('endpoints');
+      var tbody = $('endpoints');
       tbody.innerHTML = '';
-      if (endpoints.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="3" class="empty">' +
-          'No endpoints found. Add <code>@LoadTest</code> to a handler method.</td></tr>';
+      if (!endpoints.length) {
+        tbody.innerHTML = '<tr><td colspan="4" class="empty">No endpoints found. ' +
+          'Add <code>@LoadTest</code> to a handler method.</td></tr>';
         return;
       }
       endpoints.forEach(function (ep) {
         var tr = document.createElement('tr');
-
-        var methodTd = document.createElement('td');
-        var badge = document.createElement('span');
-        badge.className = 'method method-' + ep.httpMethod + ' method-default';
-        badge.textContent = ep.httpMethod;
-        methodTd.appendChild(badge);
-
-        var pathTd = document.createElement('td');
-        pathTd.className = 'path';
-        pathTd.textContent = ep.path;
-
-        var handlerTd = document.createElement('td');
-        handlerTd.className = 'handler';
-        handlerTd.textContent = ep.handler;
-
-        tr.append(methodTd, pathTd, handlerTd);
+        tr.innerHTML =
+          '<td><span class="method method-' + esc(ep.httpMethod) + '">' + esc(ep.httpMethod) + '</span></td>' +
+          '<td class="path">' + esc(ep.path) + '</td>' +
+          '<td class="handler">' + esc(ep.handler) + '</td>' +
+          '<td style="text-align:right"><button type="button">Test</button></td>';
+        tr.querySelector('button').addEventListener('click', function () { openConfig(ep); });
         tbody.appendChild(tr);
       });
     })
     .catch(function (err) {
-      document.getElementById('endpoints').innerHTML =
-        '<tr><td colspan="3" class="empty">Failed to load endpoints: ' + err.message + '</td></tr>';
+      $('endpoints').innerHTML = '<tr><td colspan="4" class="empty">Failed to load endpoints: ' +
+        esc(err.message) + '</td></tr>';
     });
+}
+
+/* ---------- run config ---------- */
+
+function openConfig(ep) {
+  selectedEndpoint = ep;
+  $('endpointsSection').classList.add('hidden');
+  $('runSection').classList.add('hidden');
+  $('configSection').classList.remove('hidden');
+  $('cfgMethod').className = 'method method-' + ep.httpMethod;
+  $('cfgMethod').textContent = ep.httpMethod;
+  $('cfgPattern').textContent = ep.path;
+  $('cfgPath').value = ep.path;
+  $('cfgError').textContent = '';
+  var hasBody = ['POST', 'PUT', 'PATCH'].indexOf(ep.httpMethod) >= 0;
+  $('cfgBodyField').classList.toggle('hidden', !hasBody);
+}
+
+$('cfgBack').addEventListener('click', function () {
+  $('configSection').classList.add('hidden');
+  $('endpointsSection').classList.remove('hidden');
+});
+
+$('cfgStart').addEventListener('click', function () {
+  var ep = selectedEndpoint;
+  var hasBody = !$('cfgBodyField').classList.contains('hidden');
+  $('cfgError').textContent = '';
+  $('cfgStart').disabled = true;
+  fetch('api/runs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      httpMethod: ep.httpMethod,
+      pathPattern: ep.path,
+      path: $('cfgPath').value.trim(),
+      body: hasBody ? $('cfgBody').value : null,
+      concurrency: parseInt($('cfgConcurrency').value, 10),
+      durationSeconds: parseInt($('cfgDuration').value, 10)
+    })
+  })
+    .then(function (res) {
+      return res.json().then(function (data) {
+        if (!res.ok) throw new Error(data.error || 'HTTP ' + res.status);
+        return data;
+      });
+    })
+    .then(function (data) { watchRun(data.id); })
+    .catch(function (err) { $('cfgError').textContent = err.message; })
+    .finally(function () { $('cfgStart').disabled = false; });
+});
+
+/* ---------- run view ---------- */
+
+var pollTimer = null;
+var currentRunId = null;
+
+function watchRun(id) {
+  currentRunId = id;
+  $('configSection').classList.add('hidden');
+  $('runSection').classList.remove('hidden');
+  $('runStop').disabled = false;
+  poll();
+  pollTimer = setInterval(poll, 1000);
+}
+
+function poll() {
+  fetch('api/runs/' + currentRunId)
+    .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
+    .then(function (view) {
+      renderRun(view);
+      if (view.status !== 'RUNNING' && pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+        $('runStop').disabled = true;
+      }
+    })
+    .catch(function () { /* transient polling failure under load — keep trying */ });
+}
+
+$('runStop').addEventListener('click', function () {
+  fetch('api/runs/' + currentRunId + '/stop', { method: 'POST' });
+});
+
+$('runBack').addEventListener('click', function () {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  $('runSection').classList.add('hidden');
+  openConfig(selectedEndpoint);
+});
+
+function renderRun(view) {
+  var s = view.summary;
+  $('runStatus').className = 'pill pill-' + view.status;
+  $('runStatus').textContent = view.status + (view.error ? ' — ' + view.error : '');
+  $('runTarget').textContent = view.spec.httpMethod + ' ' + view.spec.path +
+    ' · ' + view.spec.concurrency + ' users';
+  $('runElapsed').textContent = view.elapsedSeconds + 's / ' + view.spec.durationSeconds + 's';
+
+  $('summaryCards').innerHTML = [
+    ['Requests', fmt(s.requests), ''],
+    ['Throughput', fmt(s.rps, 1), 'req/s'],
+    ['Errors', fmt(s.errorRate * 100, 2) + '%', fmt(s.errors) + ' reqs'],
+    ['p50', fmt(s.p50), 'ms'],
+    ['p95', fmt(s.p95), 'ms'],
+    ['p99', fmt(s.p99), 'ms']
+  ].map(function (c) {
+    return '<div class="card stat"><div class="label">' + c[0] + '</div>' +
+      '<div class="value">' + c[1] + (c[2] ? ' <span class="unit">' + c[2] + '</span>' : '') + '</div></div>';
+  }).join('');
+
+  renderCharts(view);
+  renderDataTable(view);
+}
+
+function chartHost(id) {
+  var el = $(id);
+  if (!el) {
+    el = document.createElement('div');
+    el.id = id;
+    el.className = 'card chart-block';
+    $('charts').appendChild(el);
+  }
+  return el;
+}
+
+function seriesFrom(list, xKey, yKey) {
+  var values = {};
+  list.forEach(function (p) { if (p[yKey] != null) values[p[xKey]] = p[yKey]; });
+  return values;
+}
+
+function metricSeries(samples, key) {
+  var values = {};
+  samples.forEach(function (p) { if (p.values[key] != null) values[p.t] = p.values[key]; });
+  return values;
+}
+
+function renderCharts(view) {
+  var xMax = view.spec.durationSeconds;
+  var tl = view.timeline;
+  var sm = view.serverMetrics || [];
+
+  renderChart(chartHost('chartLatency'), {
+    title: 'Latency', unit: 'ms', xMax: xMax,
+    series: [
+      { name: 'p50', color: cssVar('--p50'), type: 'line', values: seriesFrom(tl, 't', 'p50') },
+      { name: 'p95', color: cssVar('--p95'), type: 'line', values: seriesFrom(tl, 't', 'p95') }
+    ]
+  });
+
+  var errors = seriesFrom(tl, 't', 'errors');
+  var success = {};
+  tl.forEach(function (p) { success[p.t] = p.count - p.errors; });
+  renderChart(chartHost('chartRps'), {
+    title: 'Throughput', unit: 'req/s', xMax: xMax,
+    series: [
+      { name: 'errors', color: cssVar('--status-critical'), type: 'bar', values: errors },
+      { name: 'success', color: cssVar('--series-1'), type: 'bar', values: success, stackBase: errors }
+    ]
+  });
+
+  // Server internals — aligned to the same time axis, one measure per chart
+  // (never a second y-axis on the latency chart).
+  var tomcatBusy = metricSeries(sm, 'tomcatThreadsBusy');
+  if (Object.keys(tomcatBusy).length) {
+    var tomcatMax = metricSeries(sm, 'tomcatThreadsMax');
+    var maxVal = lastValue(tomcatMax);
+    renderChart(chartHost('chartTomcat'), {
+      title: 'Tomcat threads busy', unit: 'threads', xMax: xMax,
+      series: [{ name: 'busy', color: cssVar('--series-1'), type: 'line', values: tomcatBusy }],
+      refs: maxVal == null ? [] : [{ name: 'max', y: maxVal }]
+    });
+  }
+
+  var hikariActive = metricSeries(sm, 'hikariActive');
+  if (Object.keys(hikariActive).length) {
+    var hikariMax = lastValue(metricSeries(sm, 'hikariMax'));
+    renderChart(chartHost('chartHikari'), {
+      title: 'HikariCP connections', unit: 'connections', xMax: xMax,
+      series: [
+        { name: 'active', color: cssVar('--series-1'), type: 'line', values: hikariActive },
+        { name: 'pending', color: cssVar('--series-2'), type: 'line', values: metricSeries(sm, 'hikariPending') }
+      ],
+      refs: hikariMax == null ? [] : [{ name: 'max', y: hikariMax }]
+    });
+  }
+
+  var gc = metricSeries(sm, 'gcPauseMs');
+  if (Object.keys(gc).length) {
+    renderChart(chartHost('chartGc'), {
+      title: 'GC pause', unit: 'ms per second', xMax: xMax,
+      series: [{ name: 'gc pause', color: cssVar('--series-1'), type: 'bar', values: gc }]
+    });
+  }
+}
+
+function lastValue(values) {
+  var keys = Object.keys(values);
+  return keys.length ? values[keys[keys.length - 1]] : null;
+}
+
+function renderDataTable(view) {
+  var sm = {};
+  (view.serverMetrics || []).forEach(function (p) { sm[p.t] = p.values; });
+  var hasTomcat = Object.values(sm).some(function (v) { return v.tomcatThreadsBusy != null; });
+  var hasHikari = Object.values(sm).some(function (v) { return v.hikariActive != null; });
+  var hasGc = Object.values(sm).some(function (v) { return v.gcPauseMs != null; });
+
+  var head = '<tr><th>t</th><th>requests</th><th>errors</th><th>p50 ms</th><th>p95 ms</th>' +
+    (hasTomcat ? '<th>tomcat busy</th>' : '') +
+    (hasHikari ? '<th>hikari active</th><th>pending</th>' : '') +
+    (hasGc ? '<th>gc ms</th>' : '') + '</tr>';
+  var rows = view.timeline.map(function (p) {
+    var m = sm[p.t] || {};
+    return '<tr><td>' + p.t + 's</td><td>' + fmt(p.count) + '</td><td>' + fmt(p.errors) +
+      '</td><td>' + fmt(p.p50) + '</td><td>' + fmt(p.p95) + '</td>' +
+      (hasTomcat ? '<td>' + fmt(m.tomcatThreadsBusy) + '</td>' : '') +
+      (hasHikari ? '<td>' + fmt(m.hikariActive) + '</td><td>' + fmt(m.hikariPending) + '</td>' : '') +
+      (hasGc ? '<td>' + fmt(m.gcPauseMs, 1) + '</td>' : '') + '</tr>';
+  }).join('');
+  $('dataTable').innerHTML = '<table>' + head + rows + '</table>';
+}
+
+loadEndpoints();
 </script>
 </body>
 </html>

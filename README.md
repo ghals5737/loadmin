@@ -1,6 +1,8 @@
 # loadmin
 
-> ⚠️ **Work in progress** — currently at Phase 0 (proof of concept).
+> ⚠️ **Work in progress** — MVP stage (Phase 1): load engine, live results and
+> server metric overlays work; parameter templates, run history and Maven Central
+> publishing are still to come.
 
 Annotation-driven load testing UI for Spring Boot — like Swagger UI, but for load tests.
 
@@ -28,7 +30,26 @@ loadmin:
   enabled: true
 ```
 
-Then open `http://localhost:8080/loadmin`.
+Then open `http://localhost:8080/loadmin`, pick an endpoint, set concurrent
+users and duration, and start. You get live p50/p95/p99 latency, throughput and
+error rate — and, aligned on the same time axis, what the server was doing
+while it took the load:
+
+![loadmin run view](docs/screenshot-run.png)
+![server metric overlay](docs/screenshot-metrics.png)
+
+### Server metric overlay
+
+The overlay reads from the app's Micrometer `MeterRegistry`:
+
+| Chart | Meters | Needs |
+|-------|--------|-------|
+| Tomcat threads busy | `tomcat.threads.*` | actuator + `server.tomcat.mbeanregistry.enabled=true` |
+| HikariCP connections | `hikaricp.connections.*` | actuator + a pooled DataSource |
+| GC pause | `jvm.gc.pause` | actuator |
+
+Without a `MeterRegistry` bean the load test still works; you just get the
+client-side charts only.
 
 ## ⚠️ Do not enable in production
 

@@ -63,18 +63,20 @@ loadmin/
 
 ## 5. 로드맵
 
-### Phase 0 — 컨셉 증명 (첫 커밋 목표)
-- [ ] Gradle 멀티모듈 스캐폴딩
-- [ ] `@LoadTest` 어노테이션 정의
-- [ ] 어노테이션 붙은 엔드포인트를 런타임 스캔해서 `/loadmin`에 목록만 뿌리기
+### Phase 0 — 컨셉 증명 (첫 커밋 목표) ✅ 완료
+- [x] Gradle 멀티모듈 스캐폴딩
+- [x] `@LoadTest` 어노테이션 정의
+- [x] 어노테이션 붙은 엔드포인트를 런타임 스캔해서 `/loadmin`에 목록만 뿌리기
 - 이것만 되면 "스웨거처럼 열린다" 컨셉 증명 완료
 
-### Phase 1 — MVP
-- [ ] auto-configuration + `loadmin.enabled` opt-in 가드
-- [ ] UI에서 동시 사용자 수 / duration 설정
-- [ ] 격리 스레드풀 + WebClient 기반 부하 실행 엔진
-- [ ] latency 결과 (p50/p95/p99, RPS, 에러율)
-- [ ] Actuator/Micrometer 메트릭 오버레이 (스레드풀, HikariCP, GC 최소 3종)
+### Phase 1 — MVP ✅ 완료
+- [x] auto-configuration + `loadmin.enabled` opt-in 가드
+- [x] UI에서 동시 사용자 수 / duration 설정
+- [x] 격리 스레드풀 + WebClient 기반 부하 실행 엔진
+- [x] latency 결과 (p50/p95/p99, RPS, 에러율)
+- [x] Actuator/Micrometer 메트릭 오버레이 (스레드풀, HikariCP, GC 최소 3종)
+- 참고: Tomcat 스레드 메트릭은 소비 앱에서 `server.tomcat.mbeanregistry.enabled=true` 필요
+- 참고: 메트릭 오버레이는 dual-axis가 아니라 시간축을 공유하는 차트 스택으로 구현 (dataviz 원칙)
 
 ### Phase 2 — 완성도
 - [ ] 요청 파라미터/바디 템플릿 (랜덤 값 생성 전략)
