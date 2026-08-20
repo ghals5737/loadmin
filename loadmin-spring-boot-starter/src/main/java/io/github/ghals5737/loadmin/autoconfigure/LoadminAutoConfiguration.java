@@ -1,15 +1,23 @@
 package io.github.ghals5737.loadmin.autoconfigure;
 
+import java.nio.file.Paths;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.github.ghals5737.loadmin.core.LoadTestEndpointScanner;
 import io.github.ghals5737.loadmin.core.engine.LoadTestEngine;
+import io.github.ghals5737.loadmin.core.engine.LoadTestRun;
 import io.github.ghals5737.loadmin.core.engine.LoadTestRunRegistry;
+import io.github.ghals5737.loadmin.core.history.RunHistoryStore;
 import io.micrometer.core.instrument.MeterRegistry;
 
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
@@ -49,8 +57,23 @@ public class LoadminAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    @ConditionalOnClass(ObjectMapper.class)
+    @ConditionalOnProperty(prefix = "loadmin.history", name = "enabled",
+            havingValue = "true", matchIfMissing = true)
+    public RunHistoryStore runHistoryStore(LoadminProperties properties,
+            ObjectProvider<ObjectMapper> objectMapper) {
+        LoadminProperties.History history = properties.getHistory();
+        // The application's own mapper, so stored runs look exactly like the
+        // ones the REST API serves.
+        return new RunHistoryStore(Paths.get(history.getDir()), history.getMaxRuns(),
+                objectMapper.getIfAvailable(ObjectMapper::new));
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     public LoadTestEngine loadTestEngine(LoadTestRunRegistry registry, LoadminProperties properties,
-            Environment environment, ObjectProvider<MeterRegistry> meterRegistry) {
+            Environment environment, ObjectProvider<MeterRegistry> meterRegistry,
+            ObjectProvider<RunHistoryStore> historyStore) {
         // Resolved lazily: local.server.port is only available once the web
         // server has started, which is after this bean is created.
         Supplier<String> baseUrl = () -> {
@@ -59,8 +82,10 @@ public class LoadminAutoConfiguration {
             String contextPath = environment.getProperty("server.servlet.context-path", "");
             return "http://localhost:" + port + contextPath;
         };
+        RunHistoryStore history = historyStore.getIfAvailable();
+        Consumer<LoadTestRun> onFinished = history == null ? null : run -> history.save(run.view());
         return new LoadTestEngine(registry, baseUrl, meterRegistry.getIfAvailable(),
-                properties.getMaxConcurrency(), properties.getMaxDurationSeconds());
+                properties.getMaxConcurrency(), properties.getMaxDurationSeconds(), onFinished);
     }
 
     @Bean
@@ -74,5 +99,13 @@ public class LoadminAutoConfiguration {
     public LoadminRunController loadminRunController(LoadTestEngine engine,
             LoadTestRunRegistry registry, LoadTestEndpointScanner scanner) {
         return new LoadminRunController(engine, registry, scanner);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnBean(RunHistoryStore.class)
+    public LoadminHistoryController loadminHistoryController(RunHistoryStore history,
+            LoadTestRunRegistry registry) {
+        return new LoadminHistoryController(history, registry);
     }
 }

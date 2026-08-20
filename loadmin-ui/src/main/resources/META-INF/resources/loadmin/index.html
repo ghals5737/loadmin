@@ -113,6 +113,26 @@
   .samples div { padding: 1px 0; overflow-wrap: anywhere; }
   .samples.invalid { color: var(--status-critical); }
 
+  /* history */
+  .history-actions {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 16px; border-top: 1px solid var(--grid);
+  }
+  .hint-inline { color: var(--muted); font-size: 12px; }
+  table.list td.num, table.list th.num {
+    text-align: right; font-variant-numeric: tabular-nums;
+  }
+  table.list td.pick { width: 30px; }
+  .when { color: var(--ink-2); font-size: 13px; white-space: nowrap; }
+  .baseline {
+    margin: 12px 0 2px; font-size: 13px; color: var(--ink-2);
+    display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline;
+  }
+  .baseline .label { color: var(--muted); }
+  .delta-better { color: var(--good-text); font-weight: 600; }
+  .delta-worse { color: var(--status-critical); font-weight: 600; }
+  .delta-same { color: var(--muted); }
+
   /* run view */
   .run-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
   .pill {
@@ -178,6 +198,33 @@
     </div>
   </section>
 
+  <section id="historySection" class="hidden">
+    <h2>History</h2>
+    <div class="card">
+      <table class="list">
+        <thead><tr>
+          <th class="pick"></th><th>When</th><th>Target</th><th>Load</th>
+          <th class="num">req/s</th><th class="num">p95</th><th class="num">Errors</th><th></th>
+        </tr></thead>
+        <tbody id="historyRows"></tbody>
+      </table>
+      <div class="history-actions">
+        <button id="historyCompare" type="button" disabled>Compare selected</button>
+        <span class="hint-inline" id="historyHint">Tick two runs of the same endpoint to compare them.</span>
+      </div>
+    </div>
+  </section>
+
+  <section id="compareSection" class="hidden">
+    <div class="run-head">
+      <span class="run-target" id="compareTitle"></span>
+      <span style="flex:1"></span>
+      <button class="linklike" id="compareBack" type="button">← back to list</button>
+    </div>
+    <div class="card" id="compareTable" style="margin-bottom: 14px;"></div>
+    <div id="compareCharts"></div>
+  </section>
+
   <section id="configSection" class="hidden">
     <h2>New load test</h2>
     <div class="card">
@@ -227,6 +274,7 @@
       <button class="linklike" id="runBack" type="button">← new test</button>
     </div>
     <div class="cards" id="summaryCards"></div>
+    <div class="baseline hidden" id="runBaseline"></div>
     <div id="charts"></div>
     <details class="data-table card">
       <summary>Per-second data table</summary>
@@ -443,10 +491,21 @@ function loadEndpoints() {
 
 /* ---------- run config ---------- */
 
+function showHome() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  $('configSection').classList.add('hidden');
+  $('runSection').classList.add('hidden');
+  $('compareSection').classList.add('hidden');
+  $('endpointsSection').classList.remove('hidden');
+  loadHistory();
+}
+
 function openConfig(ep) {
   selectedEndpoint = ep;
   $('endpointsSection').classList.add('hidden');
+  $('historySection').classList.add('hidden');
   $('runSection').classList.add('hidden');
+  $('compareSection').classList.add('hidden');
   $('configSection').classList.remove('hidden');
   $('cfgMethod').className = 'method method-' + ep.httpMethod;
   $('cfgMethod').textContent = ep.httpMethod;
@@ -527,7 +586,7 @@ $('cfgBody').addEventListener('input', schedulePreview);
 
 $('cfgBack').addEventListener('click', function () {
   $('configSection').classList.add('hidden');
-  $('endpointsSection').classList.remove('hidden');
+  showHome();
 });
 
 $('cfgStart').addEventListener('click', function () {
@@ -562,14 +621,45 @@ $('cfgStart').addEventListener('click', function () {
 
 var pollTimer = null;
 var currentRunId = null;
+var runOrigin = 'config';
+/* The run this one is compared against — fetched once, when the run ends. */
+var baselineView = null;
+var baselineFetchedFor = null;
 
 function watchRun(id) {
   currentRunId = id;
+  runOrigin = 'config';
+  baselineView = null;
+  baselineFetchedFor = null;
+  $('runBaseline').classList.add('hidden');
   $('configSection').classList.add('hidden');
   $('runSection').classList.remove('hidden');
   $('runStop').disabled = false;
+  $('runBack').textContent = '← new test';
   poll();
   pollTimer = setInterval(poll, 1000);
+}
+
+/* A finished run read back from history: same view, nothing live about it. */
+function openStoredRun(id) {
+  fetch('api/history/' + id)
+    .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
+    .then(function (view) {
+      currentRunId = id;
+      runOrigin = 'history';
+      baselineView = null;
+      baselineFetchedFor = null;
+      $('runBaseline').classList.add('hidden');
+      $('endpointsSection').classList.add('hidden');
+      $('historySection').classList.add('hidden');
+      $('compareSection').classList.add('hidden');
+      $('runSection').classList.remove('hidden');
+      $('runStop').disabled = true;
+      $('runBack').textContent = '← back to list';
+      renderRun(view);
+      loadBaseline(view);
+    })
+    .catch(function () { /* the run was evicted; the list will refresh */ });
 }
 
 function poll() {
@@ -581,6 +671,7 @@ function poll() {
         clearInterval(pollTimer);
         pollTimer = null;
         $('runStop').disabled = true;
+        loadBaseline(view);
       }
     })
     .catch(function () { /* transient polling failure under load — keep trying */ });
@@ -593,8 +684,60 @@ $('runStop').addEventListener('click', function () {
 $('runBack').addEventListener('click', function () {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   $('runSection').classList.add('hidden');
-  openConfig(selectedEndpoint);
+  if (runOrigin === 'config' && selectedEndpoint) {
+    openConfig(selectedEndpoint);
+  } else {
+    showHome();
+  }
 });
+
+/* ---------- comparison with the previous run ---------- */
+
+/* 204 = first run on this endpoint, 404 = history disabled: both mean no row. */
+function loadBaseline(view) {
+  if (baselineFetchedFor === view.id) { return; }
+  baselineFetchedFor = view.id;
+  fetch('api/runs/' + view.id + '/baseline')
+    .then(function (res) { return res.status === 200 ? res.json() : null; })
+    .then(function (base) {
+      if (!base) { return; }
+      baselineView = base;
+      renderBaselineRow(view, base);
+      renderCharts(view);
+    })
+    .catch(function () { /* comparison is optional */ });
+}
+
+function renderBaselineRow(view, base) {
+  var a = base.summary;
+  var b = view.summary;
+  var row = $('runBaseline');
+  row.classList.remove('hidden');
+  row.innerHTML =
+    '<span class="label">vs previous run (' + esc(ago(base.startedAtMillis)) + ', ' +
+      esc(base.spec.concurrency) + ' users):</span>' +
+    delta('p95', a.p95, b.p95, true, 0, 'ms') +
+    delta('p50', a.p50, b.p50, true, 0, 'ms') +
+    delta('req/s', a.rps, b.rps, false, 1, '') +
+    delta('errors', a.errorRate * 100, b.errorRate * 100, true, 2, '%');
+}
+
+/* One metric as "name now (was before, ±diff)", coloured by whether the
+   change is an improvement — which depends on the metric. */
+function delta(name, was, now, lowerIsBetter, digits, unit) {
+  var diff = now - was;
+  var pct = was === 0 ? null : (diff / was) * 100;
+  var cls = 'delta-same';
+  if (Math.abs(pct == null ? diff : pct) >= (pct == null ? 0.0001 : 1)) {
+    cls = (diff < 0) === lowerIsBetter ? 'delta-better' : 'delta-worse';
+  }
+  var sign = diff > 0 ? '+' : diff < 0 ? '−' : '±';
+  var change = sign + fmt(Math.abs(diff), digits) + unit +
+    (pct == null ? '' : ' / ' + sign + fmt(Math.abs(pct), 0) + '%');
+  return '<span><span class="label">' + esc(name) + '</span> ' +
+    fmt(now, digits) + unit + ' <span class="' + cls + '">' + change + '</span> ' +
+    '<span class="label">(was ' + fmt(was, digits) + unit + ')</span></span>';
+}
 
 function renderRun(view) {
   var s = view.summary;
@@ -648,12 +791,19 @@ function renderCharts(view) {
   var tl = view.timeline;
   var sm = view.serverMetrics || [];
 
+  var latency = [
+    { name: 'p50', color: cssVar('--p50'), type: 'line', values: seriesFrom(tl, 't', 'p50') },
+    { name: 'p95', color: cssVar('--p95'), type: 'line', values: seriesFrom(tl, 't', 'p95') }
+  ];
+  if (baselineView) {
+    latency.push({
+      name: 'p95 (previous)', color: cssVar('--muted'), type: 'line', dash: true,
+      values: seriesFrom(baselineView.timeline, 't', 'p95')
+    });
+    xMax = Math.max(xMax, baselineView.spec.durationSeconds);
+  }
   renderChart(chartHost('chartLatency'), {
-    title: 'Latency', unit: 'ms', xMax: xMax,
-    series: [
-      { name: 'p50', color: cssVar('--p50'), type: 'line', values: seriesFrom(tl, 't', 'p50') },
-      { name: 'p95', color: cssVar('--p95'), type: 'line', values: seriesFrom(tl, 't', 'p95') }
-    ]
+    title: 'Latency', unit: 'ms', xMax: xMax, series: latency
   });
 
   var errors = seriesFrom(tl, 't', 'errors');
@@ -729,7 +879,160 @@ function renderDataTable(view) {
   $('dataTable').innerHTML = '<table>' + head + rows + '</table>';
 }
 
+/* ---------- history ---------- */
+
+var historySelection = [];
+
+function ago(millis) {
+  var seconds = Math.max(0, Math.round((Date.now() - millis) / 1000));
+  if (seconds < 60) { return seconds + 's ago'; }
+  if (seconds < 3600) { return Math.round(seconds / 60) + 'm ago'; }
+  if (seconds < 86400) { return Math.round(seconds / 3600) + 'h ago'; }
+  return Math.round(seconds / 86400) + 'd ago';
+}
+
+function loadHistory() {
+  fetch('api/history')
+    .then(function (res) {
+      if (!res.ok) { return null; }   // 404: history is disabled
+      return res.json();
+    })
+    .then(function (entries) {
+      if (!entries) { $('historySection').classList.add('hidden'); return; }
+      $('historySection').classList.remove('hidden');
+      renderHistory(entries);
+    })
+    .catch(function () { $('historySection').classList.add('hidden'); });
+}
+
+function renderHistory(entries) {
+  var tbody = $('historyRows');
+  historySelection = [];
+  updateCompareButton(entries);
+  tbody.innerHTML = '';
+  if (!entries.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty">No runs recorded yet.</td></tr>';
+    return;
+  }
+  entries.forEach(function (e) {
+    var s = e.summary;
+    var tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td class="pick"><input type="checkbox" aria-label="select run"></td>' +
+      '<td class="when">' + esc(ago(e.startedAtMillis)) + '</td>' +
+      '<td class="path">' + esc(e.spec.httpMethod) + ' ' + esc(e.spec.pathTemplate) + '</td>' +
+      '<td class="handler">' + esc(e.spec.concurrency) + ' users · ' + esc(e.spec.durationSeconds) + 's</td>' +
+      '<td class="num">' + fmt(s.rps, 1) + '</td>' +
+      '<td class="num">' + fmt(s.p95) + ' ms</td>' +
+      '<td class="num">' + fmt(s.errorRate * 100, 2) + '%</td>' +
+      '<td style="text-align:right"><button type="button">Open</button></td>';
+    tr.querySelector('button').addEventListener('click', function () { openStoredRun(e.id); });
+    tr.querySelector('input').addEventListener('change', function (ev) {
+      toggleSelection(e, ev.target, entries);
+    });
+    tbody.appendChild(tr);
+  });
+}
+
+function toggleSelection(entry, box, entries) {
+  if (box.checked) {
+    if (historySelection.length === 2) { box.checked = false; return; }
+    historySelection.push(entry);
+  } else {
+    historySelection = historySelection.filter(function (e) { return e.id !== entry.id; });
+  }
+  updateCompareButton(entries);
+}
+
+function updateCompareButton(entries) {
+  var two = historySelection.length === 2;
+  var sameTarget = two &&
+    historySelection[0].spec.httpMethod === historySelection[1].spec.httpMethod &&
+    historySelection[0].spec.pathPattern === historySelection[1].spec.pathPattern;
+  $('historyCompare').disabled = !sameTarget;
+  $('historyHint').textContent = !two
+    ? 'Tick two runs of the same endpoint to compare them.'
+    : (sameTarget ? '' : 'Those two runs hit different endpoints.');
+}
+
+$('historyCompare').addEventListener('click', function () {
+  // Oldest first, so the comparison reads as "before → after".
+  var pair = historySelection.slice().sort(function (a, b) {
+    return a.startedAtMillis - b.startedAtMillis;
+  });
+  Promise.all(pair.map(function (e) {
+    return fetch('api/history/' + e.id).then(function (res) { return res.json(); });
+  })).then(function (views) { renderCompare(views[0], views[1]); });
+});
+
+$('compareBack').addEventListener('click', showHome);
+
+function renderCompare(before, after) {
+  $('endpointsSection').classList.add('hidden');
+  $('historySection').classList.add('hidden');
+  $('compareSection').classList.remove('hidden');
+  $('compareTitle').textContent = before.spec.httpMethod + ' ' + before.spec.pathPattern;
+
+  var rows = [
+    ['Throughput', 'rps', 1, 'req/s', false],
+    ['Errors', 'errorRate', 2, '%', true],
+    ['p50', 'p50', 0, ' ms', true],
+    ['p95', 'p95', 0, ' ms', true],
+    ['p99', 'p99', 0, ' ms', true]
+  ].map(function (r) {
+    var scale = r[1] === 'errorRate' ? 100 : 1;
+    var a = before.summary[r[1]] * scale;
+    var b = after.summary[r[1]] * scale;
+    var diff = b - a;
+    var pct = a === 0 ? null : (diff / a) * 100;
+    var cls = Math.abs(pct == null ? diff : pct) < (pct == null ? 0.0001 : 1) ? 'delta-same'
+      : ((diff < 0) === r[4] ? 'delta-better' : 'delta-worse');
+    var sign = diff > 0 ? '+' : diff < 0 ? '−' : '±';
+    return '<tr><td>' + r[0] + '</td>' +
+      '<td class="num">' + fmt(a, r[2]) + r[3] + '</td>' +
+      '<td class="num">' + fmt(b, r[2]) + r[3] + '</td>' +
+      '<td class="num ' + cls + '">' + sign + fmt(Math.abs(diff), r[2]) + r[3] +
+      (pct == null ? '' : ' / ' + sign + fmt(Math.abs(pct), 0) + '%') + '</td></tr>';
+  }).join('');
+
+  $('compareTable').innerHTML = '<table class="list">' +
+    '<thead><tr><th></th>' +
+    '<th class="num">' + esc(ago(before.startedAtMillis)) + ' · ' + esc(before.spec.concurrency) + ' users</th>' +
+    '<th class="num">' + esc(ago(after.startedAtMillis)) + ' · ' + esc(after.spec.concurrency) + ' users</th>' +
+    '<th class="num">change</th></tr></thead><tbody>' + rows + '</tbody></table>';
+
+  var xMax = Math.max(before.spec.durationSeconds, after.spec.durationSeconds);
+  $('compareCharts').innerHTML = '';
+  renderChart(compareHost('cmpLatency'), {
+    title: 'p95 latency', unit: 'ms', xMax: xMax,
+    series: [
+      { name: 'before', color: cssVar('--muted'), type: 'line', dash: true,
+        values: seriesFrom(before.timeline, 't', 'p95') },
+      { name: 'after', color: cssVar('--p95'), type: 'line',
+        values: seriesFrom(after.timeline, 't', 'p95') }
+    ]
+  });
+  renderChart(compareHost('cmpRps'), {
+    title: 'Requests per second', unit: 'req/s', xMax: xMax,
+    series: [
+      { name: 'before', color: cssVar('--muted'), type: 'line', dash: true,
+        values: seriesFrom(before.timeline, 't', 'count') },
+      { name: 'after', color: cssVar('--series-1'), type: 'line',
+        values: seriesFrom(after.timeline, 't', 'count') }
+    ]
+  });
+}
+
+function compareHost(id) {
+  var el = document.createElement('div');
+  el.id = id;
+  el.className = 'card chart-block';
+  $('compareCharts').appendChild(el);
+  return el;
+}
+
 loadEndpoints();
+loadHistory();
 </script>
 </body>
 </html>

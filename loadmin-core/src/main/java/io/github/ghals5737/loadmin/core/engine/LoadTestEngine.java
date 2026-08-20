@@ -9,6 +9,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import io.github.ghals5737.loadmin.core.metrics.ServerMetricsSampler;
@@ -41,6 +42,7 @@ import reactor.netty.resources.LoopResources;
  */
 public class LoadTestEngine {
 
+    private static final System.Logger LOG = System.getLogger(LoadTestEngine.class.getName());
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
     private static final long GRACE_SECONDS = 30;
 
@@ -49,14 +51,26 @@ public class LoadTestEngine {
     private final MeterRegistry meterRegistry;
     private final int maxConcurrency;
     private final int maxDurationSeconds;
+    private final Consumer<LoadTestRun> onFinished;
 
     public LoadTestEngine(LoadTestRunRegistry registry, Supplier<String> baseUrl,
             MeterRegistry meterRegistry, int maxConcurrency, int maxDurationSeconds) {
+        this(registry, baseUrl, meterRegistry, maxConcurrency, maxDurationSeconds, null);
+    }
+
+    /**
+     * @param onFinished called once per run after it stops, whatever its
+     *                   outcome; used to record history. May be {@code null}.
+     */
+    public LoadTestEngine(LoadTestRunRegistry registry, Supplier<String> baseUrl,
+            MeterRegistry meterRegistry, int maxConcurrency, int maxDurationSeconds,
+            Consumer<LoadTestRun> onFinished) {
         this.registry = registry;
         this.baseUrl = baseUrl;
         this.meterRegistry = meterRegistry;
         this.maxConcurrency = maxConcurrency;
         this.maxDurationSeconds = maxDurationSeconds;
+        this.onFinished = onFinished;
     }
 
     public LoadTestRun start(LoadTestSpec spec) {
@@ -144,6 +158,19 @@ public class LoadTestEngine {
             workers.shutdownNow();
             connections.dispose();
             loops.dispose();
+            notifyFinished(run);
+        }
+    }
+
+    /** A listener must never turn a finished run into a failed one. */
+    private void notifyFinished(LoadTestRun run) {
+        if (onFinished == null) {
+            return;
+        }
+        try {
+            onFinished.accept(run);
+        } catch (RuntimeException e) {
+            LOG.log(System.Logger.Level.WARNING, "loadmin: run listener failed for " + run.id(), e);
         }
     }
 
