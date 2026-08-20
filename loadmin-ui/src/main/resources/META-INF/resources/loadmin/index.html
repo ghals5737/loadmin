@@ -101,6 +101,17 @@
   .field-body { grid-column: 1 / -1; }
   .form-actions { margin-top: 16px; display: flex; gap: 10px; align-items: center; }
   .form-error { color: var(--status-critical); font-size: 13px; }
+  .field .hint { margin-top: 5px; font-size: 11px; color: var(--muted); }
+  .field .hint code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: var(--page); border: 1px solid var(--grid); border-radius: 3px; padding: 0 3px;
+  }
+  .samples {
+    margin-top: 6px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px; color: var(--muted);
+  }
+  .samples div { padding: 1px 0; overflow-wrap: anywhere; }
+  .samples.invalid { color: var(--status-critical); }
 
   /* run view */
   .run-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
@@ -179,6 +190,11 @@
         <div class="field">
           <label for="cfgPath">Request path (fill in any {variables})</label>
           <input id="cfgPath" type="text" spellcheck="false">
+          <div class="samples" id="cfgPathSamples"></div>
+          <div class="hint">Rendered per request:
+            <code>${int(1,20)}</code> <code>${seq}</code> <code>${uuid}</code>
+            <code>${alpha(8)}</code> <code>${pick(a|b)}</code> <code>${now}</code>
+          </div>
         </div>
         <div class="field">
           <label for="cfgConcurrency">Concurrent users</label>
@@ -191,6 +207,7 @@
         <div class="field field-body hidden" id="cfgBodyField">
           <label for="cfgBody">JSON body</label>
           <textarea id="cfgBody" rows="4">{}</textarea>
+          <div class="samples" id="cfgBodySamples"></div>
         </div>
       </div>
       <div class="form-actions">
@@ -434,11 +451,79 @@ function openConfig(ep) {
   $('cfgMethod').className = 'method method-' + ep.httpMethod;
   $('cfgMethod').textContent = ep.httpMethod;
   $('cfgPattern').textContent = ep.path;
-  $('cfgPath').value = ep.path;
+  $('cfgPath').value = ep.pathTemplate || ep.path;
   $('cfgError').textContent = '';
   var hasBody = ['POST', 'PUT', 'PATCH'].indexOf(ep.httpMethod) >= 0;
   $('cfgBodyField').classList.toggle('hidden', !hasBody);
+  if (hasBody) {
+    $('cfgBody').value = ep.bodyTemplate || '{}';
+  }
+  showSamples('cfgPathSamples', [], false);
+  showSamples('cfgBodySamples', [], false);
+  runPreview();
 }
+
+/* ---------- template preview ---------- */
+
+var previewTimer = null;
+var previewToken = 0;
+
+function schedulePreview() {
+  if (previewTimer) { clearTimeout(previewTimer); }
+  previewTimer = setTimeout(runPreview, 300);
+}
+
+/* Samples come from the server: the generators live in Java, so the preview is
+   produced by exactly the code the run will use. */
+function runPreview() {
+  var ep = selectedEndpoint;
+  if (!ep) { return; }
+  var hasBody = !$('cfgBodyField').classList.contains('hidden');
+  var path = $('cfgPath').value.trim();
+  var body = hasBody ? $('cfgBody').value : null;
+  var token = ++previewToken;
+  fetch('api/templates/preview', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      httpMethod: ep.httpMethod, pathPattern: ep.path, path: path, body: body
+    })
+  })
+    .then(function (res) {
+      return res.json().then(function (data) { return { ok: res.ok, data: data }; });
+    })
+    .then(function (result) {
+      if (token !== previewToken) { return; }
+      if (!result.ok) {
+        showSamples('cfgPathSamples', [result.data.error || 'invalid template'], true);
+        showSamples('cfgBodySamples', [], false);
+        return;
+      }
+      showSamples('cfgPathSamples', varying(path, result.data.paths), false);
+      showSamples('cfgBodySamples', varying(body, result.data.bodies), false);
+    })
+    .catch(function () { /* preview is best effort; Start reports real errors */ });
+}
+
+/* A template without placeholders renders itself — no point echoing it back. */
+function varying(input, samples) {
+  if (!samples || (samples.length === 1 && samples[0] === (input || '').trim())) { return []; }
+  return samples;
+}
+
+function showSamples(id, values, invalid) {
+  var box = $(id);
+  box.classList.toggle('invalid', invalid);
+  box.innerHTML = '';
+  values.forEach(function (value) {
+    var row = document.createElement('div');
+    row.textContent = invalid ? value : '\u2192 ' + value;
+    box.appendChild(row);
+  });
+}
+
+$('cfgPath').addEventListener('input', schedulePreview);
+$('cfgBody').addEventListener('input', schedulePreview);
 
 $('cfgBack').addEventListener('click', function () {
   $('configSection').classList.add('hidden');
@@ -515,7 +600,7 @@ function renderRun(view) {
   var s = view.summary;
   $('runStatus').className = 'pill pill-' + view.status;
   $('runStatus').textContent = view.status + (view.error ? ' — ' + view.error : '');
-  $('runTarget').textContent = view.spec.httpMethod + ' ' + view.spec.path +
+  $('runTarget').textContent = view.spec.httpMethod + ' ' + view.spec.pathTemplate +
     ' · ' + view.spec.concurrency + ' users';
   $('runElapsed').textContent = view.elapsedSeconds + 's / ' + view.spec.durationSeconds + 's';
 

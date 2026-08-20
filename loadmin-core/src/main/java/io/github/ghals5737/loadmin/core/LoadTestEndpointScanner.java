@@ -27,14 +27,20 @@ public class LoadTestEndpointScanner {
     public List<LoadTestEndpoint> scan() {
         List<LoadTestEndpoint> endpoints = new ArrayList<>();
         handlerMapping.getHandlerMethods().forEach((mapping, handlerMethod) -> {
-            if (!handlerMethod.hasMethodAnnotation(LoadTest.class)) {
+            LoadTest annotation = handlerMethod.getMethodAnnotation(LoadTest.class);
+            if (annotation == null) {
                 return;
             }
             String handler = handlerMethod.getBeanType().getSimpleName()
                     + "#" + handlerMethod.getMethod().getName();
             for (String path : resolvePaths(mapping)) {
+                // The annotation's templates are passed through untouched; they are
+                // parsed (and rejected) when a run is started, so a typo here never
+                // breaks the application's startup.
+                String pathTemplate = annotation.path().isBlank() ? path : annotation.path();
                 for (String httpMethod : resolveHttpMethods(mapping)) {
-                    endpoints.add(new LoadTestEndpoint(httpMethod, path, handler));
+                    endpoints.add(new LoadTestEndpoint(httpMethod, path, handler,
+                            pathTemplate, annotation.body()));
                 }
             }
         });

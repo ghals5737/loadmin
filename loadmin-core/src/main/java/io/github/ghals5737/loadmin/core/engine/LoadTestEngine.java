@@ -12,6 +12,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
 import io.github.ghals5737.loadmin.core.metrics.ServerMetricsSampler;
+import io.github.ghals5737.loadmin.core.template.ValueTemplate;
 import io.micrometer.core.instrument.MeterRegistry;
 
 import org.springframework.http.HttpMethod;
@@ -33,6 +34,10 @@ import reactor.netty.resources.LoopResources;
  * with a WebClient the application itself may use. The load still originates
  * from the same JVM — numbers are for local/dev exploration, not rigorous
  * benchmarking.
+ *
+ * <p>The path and body of a spec are templates: parsed once when the run starts
+ * and re-rendered for every request, so virtual users spread over many keys
+ * instead of hammering a single cached row.
  */
 public class LoadTestEngine {
 
@@ -56,9 +61,10 @@ public class LoadTestEngine {
 
     public LoadTestRun start(LoadTestSpec spec) {
         validate(spec);
+        CompiledRequest request = compile(spec);
         LoadTestRun run = new LoadTestRun(UUID.randomUUID().toString().substring(0, 8), spec);
         registry.add(run);
-        Thread controller = new Thread(() -> execute(run), "loadmin-run-" + run.id());
+        Thread controller = new Thread(() -> execute(run, request), "loadmin-run-" + run.id());
         controller.setDaemon(true);
         controller.start();
         return run;
@@ -76,7 +82,23 @@ public class LoadTestEngine {
         HttpMethod.valueOf(spec.httpMethod());
     }
 
-    private void execute(LoadTestRun run) {
+    /**
+     * Parses the request templates up front, so a malformed one fails the start
+     * call (surfacing as a 400) instead of the run itself.
+     */
+    private CompiledRequest compile(LoadTestSpec spec) {
+        ValueTemplate path = ValueTemplate.compile(spec.pathTemplate(), ValueTemplate.Mode.PATH);
+        ValueTemplate body = spec.bodyTemplate() == null || spec.bodyTemplate().isBlank()
+                ? null
+                : ValueTemplate.compile(spec.bodyTemplate(), ValueTemplate.Mode.BODY);
+        return new CompiledRequest(path, body);
+    }
+
+    /** A spec's templates, parsed once and shared by every virtual user. */
+    private record CompiledRequest(ValueTemplate path, ValueTemplate body) {
+    }
+
+    private void execute(LoadTestRun run, CompiledRequest request) {
         LoadTestSpec spec = run.spec();
         String name = "loadmin-" + run.id();
         ConnectionProvider connections = ConnectionProvider.create(name, spec.concurrency());
@@ -107,7 +129,7 @@ public class LoadTestEngine {
             for (int i = 0; i < spec.concurrency(); i++) {
                 workers.execute(() -> {
                     try {
-                        runVirtualUser(run, client, deadline);
+                        runVirtualUser(run, client, deadline, request);
                     } finally {
                         done.countDown();
                     }
@@ -125,19 +147,20 @@ public class LoadTestEngine {
         }
     }
 
-    private void runVirtualUser(LoadTestRun run, WebClient client, long deadline) {
-        LoadTestSpec spec = run.spec();
-        HttpMethod method = HttpMethod.valueOf(spec.httpMethod());
-        boolean hasBody = spec.body() != null && !spec.body().isBlank();
+    private void runVirtualUser(LoadTestRun run, WebClient client, long deadline,
+            CompiledRequest compiled) {
+        HttpMethod method = HttpMethod.valueOf(run.spec().httpMethod());
 
         while (System.nanoTime() < deadline && !run.stopRequested()) {
             long started = System.nanoTime();
             boolean error;
             try {
-                WebClient.RequestBodySpec bodySpec = client.method(method).uri(spec.path());
-                WebClient.RequestHeadersSpec<?> request = hasBody
-                        ? bodySpec.contentType(MediaType.APPLICATION_JSON).bodyValue(spec.body())
-                        : bodySpec;
+                WebClient.RequestBodySpec bodySpec = client.method(method)
+                        .uri(compiled.path().render());
+                WebClient.RequestHeadersSpec<?> request = compiled.body() == null
+                        ? bodySpec
+                        : bodySpec.contentType(MediaType.APPLICATION_JSON)
+                                .bodyValue(compiled.body().render());
                 HttpStatusCode status = request
                         .exchangeToMono(response -> response.releaseBody().thenReturn(response.statusCode()))
                         .block(REQUEST_TIMEOUT.plusSeconds(1));

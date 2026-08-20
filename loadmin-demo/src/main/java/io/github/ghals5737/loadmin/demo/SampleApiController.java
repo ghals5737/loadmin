@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -33,7 +34,7 @@ public class SampleApiController {
         return Map.of("message", "hello");
     }
 
-    @LoadTest
+    @LoadTest(path = "/api/users/${int(1,20)}")
     @GetMapping("/users/{id}")
     public Map<String, Object> user(@PathVariable long id) {
         long dbId = Math.floorMod(id, 20) + 1;
@@ -58,12 +59,21 @@ public class SampleApiController {
         });
     }
 
-    @LoadTest
+    @LoadTest(body = """
+            {"item": "${pick(shoes|bags|hat)}", "qty": ${int(1,5)}, "orderNo": "${uuid}"}""")
     @PostMapping("/orders")
     public Map<String, Object> createOrder(@RequestBody Map<String, Object> order)
             throws InterruptedException {
         simulateWork();
         return Map.of("status", "created", "order", order);
+    }
+
+    @LoadTest(path = "/api/search?q=${pick(shoes|bags|hat)}&page=${int(1,5)}")
+    @GetMapping("/search")
+    public Map<String, Object> search(@RequestParam String q, @RequestParam int page)
+            throws InterruptedException {
+        simulateWork();
+        return Map.of("q", q, "page", page);
     }
 
     // Intentionally NOT annotated — must not appear in the /loadmin list.
