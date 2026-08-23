@@ -1,8 +1,8 @@
 # loadmin
 
 > ⚠️ **Work in progress** — the load engine, live results, server metric
-> overlays, request templates and run history all work; Maven Central publishing
-> and k6/Gatling export are still to come.
+> overlays, request templates and run history all work. `0.1.0` is the first
+> release; the API may still move. k6/Gatling export is on the roadmap.
 
 Annotation-driven load testing UI for Spring Boot — like Swagger UI, but for load tests.
 
@@ -11,6 +11,21 @@ a load testing web page is exposed automatically. Unlike external tools (k6, Gat
 JMeter), loadmin lives **inside** your application, so it can overlay server-side
 metrics (Tomcat thread pool, HikariCP connection pool, GC pauses) on top of the
 latency graph while the load is running.
+
+## Installation
+
+```kotlin
+// build.gradle.kts
+implementation("io.github.ghals5737:loadmin-spring-boot-starter:0.1.0")
+```
+
+```xml
+<dependency>
+    <groupId>io.github.ghals5737</groupId>
+    <artifactId>loadmin-spring-boot-starter</artifactId>
+    <version>0.1.0</version>
+</dependency>
+```
 
 ## Quick start
 

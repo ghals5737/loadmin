@@ -1,8 +1,10 @@
 [versions]
 spring-boot = "3.5.7"
+maven-publish = "0.37.0"
 
 [libraries]
 spring-boot-dependencies = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
+maven-publish = { id = "com.vanniktech.maven.publish", version.ref = "maven-publish" }
