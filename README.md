@@ -30,12 +30,21 @@ loadmin:
   enabled: true
 ```
 
-Then open `http://localhost:8080/loadmin`, pick an endpoint, set concurrent
-users and duration, and start. You get live p50/p95/p99 latency, throughput and
-error rate — and, aligned on the same time axis, what the server was doing
-while it took the load:
+Then open `http://localhost:8080/loadmin`. Every `@LoadTest` handler is listed,
+along with the runs you have already made:
+
+![endpoint list and run history](docs/screenshot-endpoints.png)
+
+Pick an endpoint, set concurrent users and duration, and start. You get live
+p50/p95/p99 latency, throughput and error rate — plus how this run compares to
+the last one on the same endpoint:
 
 ![loadmin run view](docs/screenshot-run.png)
+
+And, aligned on the same time axis, what the server was doing while it took the
+load — here 40 virtual users against a 10-connection Hikari pool, with 30
+requests queued for a connection at any moment:
+
 ![server metric overlay](docs/screenshot-metrics.png)
 
 ### Request templates
@@ -68,10 +77,16 @@ so a template cannot be used to reach a different endpoint.
 
 ### Run history
 
-Finished runs are stored as JSON under `.loadmin/history`, so a run can be
-compared with the previous one on the same endpoint — the run view shows the
-delta in p50/p95/req-s/error rate and overlays the previous p95 on the latency
-chart, and any two runs of an endpoint can be compared side by side.
+Finished runs are stored as JSON under `.loadmin/history`, so results survive a
+restart. A run is compared against the last one on the same endpoint
+automatically — the deltas sit under the summary and the previous p95 is
+overlaid on the latency chart — and any two runs of an endpoint can be put
+side by side:
+
+![comparing two runs](docs/screenshot-compare.png)
+
+Runs and comparisons have their own URLs (`/loadmin/index.html#run/<id>`,
+`#compare/<id>,<id>`), so a result can be linked to in a PR or a chat.
 
 ### Configuration
 
@@ -96,6 +111,19 @@ The overlay reads from the app's Micrometer `MeterRegistry`:
 
 Without a `MeterRegistry` bean the load test still works; you just get the
 client-side charts only.
+
+## Try the demo
+
+The repository ships a small application with `@LoadTest` endpoints covering
+path, query and body templates, and a deliberately small HikariCP pool so the
+metric overlay has something to show:
+
+```bash
+./gradlew :loadmin-demo:bootRun
+```
+
+Then open <http://localhost:8080/loadmin>. The annotations that drive it are in
+[`SampleApiController`](loadmin-demo/src/main/java/io/github/ghals5737/loadmin/demo/SampleApiController.java).
 
 ## ⚠️ Do not enable in production
 

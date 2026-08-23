@@ -31,8 +31,8 @@ public record RunView(
     }
 
     /**
-     * One second of the run. Percentiles cover successful requests recorded in
-     * that second.
+     * One full second of the run. Percentiles cover successful requests
+     * recorded in that second; the trailing partial second is not included.
      */
     public record TimelinePoint(long t, long count, long errors, long p50, long p95) {
     }

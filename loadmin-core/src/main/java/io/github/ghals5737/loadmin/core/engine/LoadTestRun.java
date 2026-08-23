@@ -126,6 +126,13 @@ public class LoadTestRun {
                     LatencyStats.percentile(latencies, 95)));
         }
 
+        // The bucket in progress covers a fraction of a second, so plotting it
+        // next to full seconds makes throughput look like it collapsed. The
+        // summary still counts it — only the per-second view drops it.
+        if (timeline.size() > 1) {
+            timeline.remove(timeline.size() - 1);
+        }
+
         long[] all = allLatencies.stream().mapToLong(Long::longValue).sorted().toArray();
         double activeSeconds = Math.max(activeNanos() / 1_000_000_000.0, 0.001);
         RunView.Summary summary = new RunView.Summary(

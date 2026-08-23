@@ -120,8 +120,14 @@
   }
   .hint-inline { color: var(--muted); font-size: 12px; }
   table.list td.num, table.list th.num {
-    text-align: right; font-variant-numeric: tabular-nums;
+    text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap;
   }
+  table.list td.load { white-space: nowrap; }
+  /* Target templates can be long; the table scrolls inside its card rather
+     than pushing the last column out of it. */
+  .table-scroll { overflow-x: auto; }
+  .table-scroll table.list { min-width: 720px; }
+  .table-scroll td.path { overflow-wrap: anywhere; }
   table.list td.pick { width: 30px; }
   .when { color: var(--ink-2); font-size: 13px; white-space: nowrap; }
   .baseline {
@@ -201,13 +207,15 @@
   <section id="historySection" class="hidden">
     <h2>History</h2>
     <div class="card">
-      <table class="list">
-        <thead><tr>
-          <th class="pick"></th><th>When</th><th>Target</th><th>Load</th>
-          <th class="num">req/s</th><th class="num">p95</th><th class="num">Errors</th><th></th>
-        </tr></thead>
-        <tbody id="historyRows"></tbody>
-      </table>
+      <div class="table-scroll">
+        <table class="list">
+          <thead><tr>
+            <th class="pick"></th><th>When</th><th>Target</th><th>Load</th>
+            <th class="num">req/s</th><th class="num">p95</th><th class="num">Errors</th><th></th>
+          </tr></thead>
+          <tbody id="historyRows"></tbody>
+        </table>
+      </div>
       <div class="history-actions">
         <button id="historyCompare" type="button" disabled>Compare selected</button>
         <span class="hint-inline" id="historyHint">Tick two runs of the same endpoint to compare them.</span>
@@ -492,6 +500,7 @@ function loadEndpoints() {
 /* ---------- run config ---------- */
 
 function showHome() {
+  setHash('');
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   $('configSection').classList.add('hidden');
   $('runSection').classList.add('hidden');
@@ -656,6 +665,7 @@ function openStoredRun(id) {
       $('runSection').classList.remove('hidden');
       $('runStop').disabled = true;
       $('runBack').textContent = '← back to list';
+      setHash('run/' + id);
       renderRun(view);
       loadBaseline(view);
     })
@@ -899,8 +909,11 @@ function loadHistory() {
     })
     .then(function (entries) {
       if (!entries) { $('historySection').classList.add('hidden'); return; }
-      $('historySection').classList.remove('hidden');
       renderHistory(entries);
+      // This lands asynchronously: if the view moved on (a deep link opened a
+      // run or a comparison meanwhile) the list must stay hidden.
+      $('historySection').classList.toggle('hidden',
+        $('endpointsSection').classList.contains('hidden'));
     })
     .catch(function () { $('historySection').classList.add('hidden'); });
 }
@@ -921,7 +934,7 @@ function renderHistory(entries) {
       '<td class="pick"><input type="checkbox" aria-label="select run"></td>' +
       '<td class="when">' + esc(ago(e.startedAtMillis)) + '</td>' +
       '<td class="path">' + esc(e.spec.httpMethod) + ' ' + esc(e.spec.pathTemplate) + '</td>' +
-      '<td class="handler">' + esc(e.spec.concurrency) + ' users · ' + esc(e.spec.durationSeconds) + 's</td>' +
+      '<td class="handler load">' + esc(e.spec.concurrency) + ' users · ' + esc(e.spec.durationSeconds) + 's</td>' +
       '<td class="num">' + fmt(s.rps, 1) + '</td>' +
       '<td class="num">' + fmt(s.p95) + ' ms</td>' +
       '<td class="num">' + fmt(s.errorRate * 100, 2) + '%</td>' +
@@ -971,6 +984,7 @@ function renderCompare(before, after) {
   $('endpointsSection').classList.add('hidden');
   $('historySection').classList.add('hidden');
   $('compareSection').classList.remove('hidden');
+  setHash('compare/' + before.id + ',' + after.id);
   $('compareTitle').textContent = before.spec.httpMethod + ' ' + before.spec.pathPattern;
 
   var rows = [
@@ -1031,8 +1045,48 @@ function compareHost(id) {
   return el;
 }
 
+/* ---------- deep links ----------
+   A finished run and a comparison are things people send to each other
+   ("look at p95 after the fix"), so both live at their own URL. */
+
+var applyingHash = false;
+
+function setHash(value) {
+  if (location.hash.slice(1) === value) { return; }
+  applyingHash = true;
+  location.hash = value;
+  setTimeout(function () { applyingHash = false; }, 0);
+}
+
+function openHash() {
+  var route = location.hash.slice(1);
+  var run = /^run\/([\w-]+)$/.exec(route);
+  if (run) { openStoredRun(run[1]); return; }
+  var compare = /^compare\/([\w-]+),([\w-]+)$/.exec(route);
+  if (compare) {
+    Promise.all([compare[1], compare[2]].map(function (id) {
+      return fetch('api/history/' + id).then(function (res) {
+        if (!res.ok) { throw new Error('HTTP ' + res.status); }
+        return res.json();
+      });
+    }))
+      .then(function (views) {
+        views.sort(function (a, b) { return a.startedAtMillis - b.startedAtMillis; });
+        renderCompare(views[0], views[1]);
+      })
+      .catch(function () { showHome(); });
+    return;
+  }
+  showHome();
+}
+
+window.addEventListener('hashchange', function () {
+  if (!applyingHash) { openHash(); }
+});
+
 loadEndpoints();
 loadHistory();
+if (location.hash.length > 1) { openHash(); }
 </script>
 </body>
 </html>
