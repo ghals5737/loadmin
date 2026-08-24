@@ -1,5 +1,8 @@
 # loadmin
 
+[![Maven Central](https://img.shields.io/maven-central/v/io.github.ghals5737/loadmin-spring-boot-starter?color=blue)](https://central.sonatype.com/artifact/io.github.ghals5737/loadmin-spring-boot-starter)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
+
 > ⚠️ **Work in progress** — the load engine, live results, server metric
 > overlays, request templates and run history all work. `0.1.0` is the first
 > release; the API may still move. k6/Gatling export is on the roadmap.
