@@ -53,20 +53,32 @@ jobs:
 
           # The secret may hold the ASCII-armored key, or base64 of either the
           # armored text or the binary export. Normalise it to armored text.
+          if [ -z "${GPG_PRIVATE_KEY:-}" ]; then
+            echo "::error::the GPG_PRIVATE_KEY secret is empty"
+            exit 1
+          fi
           printf '%s' "$GPG_PRIVATE_KEY" > raw.key
+          echo "signing secret: $(wc -c < raw.key) bytes"
+
           if grep -q 'BEGIN PGP PRIVATE KEY' raw.key; then
             mv raw.key signing.asc
           else
-            tr -d '[:space:]' < raw.key | base64 -d > decoded.key
-            if grep -q 'BEGIN PGP PRIVATE KEY' decoded.key; then
+            tr -d '[:space:]' < raw.key | base64 -d > decoded.key 2>/dev/null || true
+            if grep -q 'BEGIN PGP PRIVATE KEY' decoded.key 2>/dev/null; then
               mv decoded.key signing.asc
-            else
-              gpg --batch --quiet --import decoded.key
+            elif [ -s decoded.key ] && gpg --batch --quiet --import decoded.key 2>/dev/null; then
               gpg --batch --quiet --pinentry-mode loopback \
                   --passphrase "$GPG_PASSPHRASE" \
                   --armor --export-secret-keys > signing.asc
             fi
           fi
+
+          if ! grep -q 'BEGIN PGP PRIVATE KEY' signing.asc 2>/dev/null; then
+            echo "::error::GPG_PRIVATE_KEY does not contain a usable secret key. \
+          Re-create it with: gpg --armor --export-secret-keys <KEY_ID> | gh secret set GPG_PRIVATE_KEY"
+            exit 1
+          fi
+          echo "signing key ready"
 
           export ORG_GRADLE_PROJECT_signingInMemoryKey="$(cat signing.asc)"
           rm -f raw.key decoded.key signing.asc
