@@ -4,8 +4,8 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
 > ⚠️ **Work in progress** — the load engine, live results, server metric
-> overlays, request templates and run history all work. `0.1.0` is the first
-> release; the API may still move. k6/Gatling export is on the roadmap.
+> overlays, request templates, run history and script export all work. `0.1.0`
+> is the first release; the API may still move.
 
 Annotation-driven load testing UI for Spring Boot — like Swagger UI, but for load tests.
 
@@ -92,6 +92,27 @@ The annotation only supplies the defaults — the UI shows rendered samples as y
 type and everything stays editable there. Only endpoints carrying `@LoadTest`
 can be targeted, and generated values can never contain path or query characters,
 so a template cannot be used to reach a different endpoint.
+
+### Running the load from somewhere else
+
+The built-in generator shares a JVM with the application it measures, so its
+numbers are for local exploration rather than rigorous benchmarking. When the
+numbers need to hold up, export the same test and run it from another process:
+
+```bash
+BASE_URL=http://localhost:8080 k6 run loadmin-api-users-id.js
+```
+
+`Export k6` and `Export Gatling` on the config screen hand the target, the
+templates and the load settings to that runner — k6 as a self-contained script
+with no jslib imports, Gatling as a single Java DSL simulation. loadmin then
+does what only it can: show the server's insides while the load arrives from
+outside.
+
+One thing changes on the way out: k6 gives every virtual user its own JS
+runtime, so `${seq}` becomes a per-user counter (each starting far enough apart
+to stay distinct). The generated script says so. Gatling runs in one JVM and
+keeps a single shared sequence.
 
 ### Run history
 

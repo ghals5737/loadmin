@@ -2,7 +2,6 @@ package io.github.ghals5737.loadmin.core.template;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
@@ -41,14 +40,38 @@ public final class ValueTemplate {
     private static final int MAX_ALPHA_LENGTH = 256;
     private static final String SUPPORTED = "int(min,max), seq, seq(start), uuid, alpha(length), pick(a|b|c), now";
 
+    /** A generator that a placeholder can name. */
+    public enum Kind {
+        INT, SEQ, UUID, ALPHA, PICK, NOW
+    }
+
+    /** One piece of a parsed template: fixed text, or a value to generate. */
+    public sealed interface Part permits Literal, Placeholder {
+    }
+
+    /** Text that is copied through as it is. */
+    public record Literal(String text) implements Part {
+    }
+
+    /**
+     * A {@code ${...}} to generate a value for. Arguments are the parsed,
+     * validated form: {@code INT} carries two bounds, {@code PICK} its choices,
+     * {@code SEQ} its start (possibly empty), the rest nothing.
+     */
+    public record Placeholder(Kind kind, List<String> args) implements Part {
+    }
+
     private final String source;
     private final String constant;
-    private final Supplier<String>[] parts;
+    private final List<Part> parts;
+    private final Supplier<String>[] generators;
 
-    private ValueTemplate(String source, String constant, Supplier<String>[] parts) {
+    private ValueTemplate(String source, String constant, List<Part> parts,
+            Supplier<String>[] generators) {
         this.source = source;
         this.constant = constant;
         this.parts = parts;
+        this.generators = generators;
     }
 
     /**
@@ -62,7 +85,7 @@ public final class ValueTemplate {
         if (source == null) {
             throw new IllegalArgumentException("template must not be null");
         }
-        List<Supplier<String>> parts = new ArrayList<>();
+        List<Part> parts = new ArrayList<>();
         StringBuilder literal = new StringBuilder();
         boolean dynamic = false;
         int i = 0;
@@ -79,11 +102,10 @@ public final class ValueTemplate {
                     throw new IllegalArgumentException("unclosed ${ in template: " + source);
                 }
                 if (literal.length() > 0) {
-                    String text = literal.toString();
-                    parts.add(() -> text);
+                    parts.add(new Literal(literal.toString()));
                     literal.setLength(0);
                 }
-                parts.add(generator(source.substring(i + 2, end).trim(), mode));
+                parts.add(placeholder(source.substring(i + 2, end).trim(), mode));
                 dynamic = true;
                 i = end + 1;
                 continue;
@@ -92,30 +114,42 @@ public final class ValueTemplate {
             i++;
         }
         if (!dynamic) {
-            return new ValueTemplate(source, literal.toString(), null);
+            return new ValueTemplate(source, literal.toString(), List.of(), null);
         }
         if (literal.length() > 0) {
-            String text = literal.toString();
-            parts.add(() -> text);
+            parts.add(new Literal(literal.toString()));
         }
-        return new ValueTemplate(source, null, parts.toArray(new Supplier[0]));
+        Supplier<String>[] generators = new Supplier[parts.size()];
+        for (int part = 0; part < parts.size(); part++) {
+            generators[part] = renderer(parts.get(part));
+        }
+        return new ValueTemplate(source, null, List.copyOf(parts), generators);
+    }
+
+    /**
+     * The parsed template. Empty for a template without placeholders — that one
+     * renders {@link #source} unchanged. Exporters walk this to translate a
+     * template into another runner's language.
+     */
+    public List<Part> parts() {
+        return parts;
     }
 
     /** Renders one concrete value. Called once per request, from many threads. */
     public String render() {
-        if (parts == null) {
+        if (generators == null) {
             return constant;
         }
         StringBuilder out = new StringBuilder(source.length() + 16);
-        for (Supplier<String> part : parts) {
-            out.append(part.get());
+        for (Supplier<String> generator : generators) {
+            out.append(generator.get());
         }
         return out.toString();
     }
 
     /** Whether the template contains at least one placeholder. */
     public boolean dynamic() {
-        return parts != null;
+        return generators != null;
     }
 
     /** The template as it was typed, for display and round-tripping. */
@@ -123,7 +157,8 @@ public final class ValueTemplate {
         return source;
     }
 
-    private static Supplier<String> generator(String expr, Mode mode) {
+    /** Parses and validates one {@code ${...}} into its structured form. */
+    private static Placeholder placeholder(String expr, Mode mode) {
         if (expr.isEmpty()) {
             throw new IllegalArgumentException("empty ${} in template");
         }
@@ -142,14 +177,13 @@ public final class ValueTemplate {
         switch (name) {
             case "uuid":
                 requireNoArgs(expr, hasArgs);
-                return () -> UUID.randomUUID().toString();
+                return new Placeholder(Kind.UUID, List.of());
             case "now":
                 requireNoArgs(expr, hasArgs);
-                return () -> Long.toString(System.currentTimeMillis());
+                return new Placeholder(Kind.NOW, List.of());
             case "seq": {
                 long start = hasArgs && !args.isBlank() ? parseLong(args, expr) : 1L;
-                AtomicLong counter = new AtomicLong(start);
-                return () -> Long.toString(counter.getAndIncrement());
+                return new Placeholder(Kind.SEQ, List.of(Long.toString(start)));
             }
             case "int": {
                 String[] bounds = hasArgs ? args.split(",", -1) : new String[0];
@@ -166,7 +200,7 @@ public final class ValueTemplate {
                 if (max == Long.MAX_VALUE) {
                     throw new IllegalArgumentException("${" + expr + "}: upper bound is too large");
                 }
-                return () -> Long.toString(ThreadLocalRandom.current().nextLong(min, max + 1));
+                return new Placeholder(Kind.INT, List.of(Long.toString(min), Long.toString(max)));
             }
             case "alpha": {
                 long length = hasArgs && !args.isBlank() ? parseLong(args, expr) : 0L;
@@ -174,8 +208,7 @@ public final class ValueTemplate {
                     throw new IllegalArgumentException(
                             "${" + expr + "} needs a length between 1 and " + MAX_ALPHA_LENGTH);
                 }
-                int size = (int) length;
-                return () -> randomAlphanumeric(size);
+                return new Placeholder(Kind.ALPHA, List.of(Long.toString(length)));
             }
             case "pick": {
                 if (!hasArgs) {
@@ -191,11 +224,46 @@ public final class ValueTemplate {
                         requirePathSafe(choice, expr);
                     }
                 }
-                return () -> choices[ThreadLocalRandom.current().nextInt(choices.length)];
+                return new Placeholder(Kind.PICK, List.of(choices));
             }
             default:
                 throw new IllegalArgumentException(
                         "unknown generator ${" + expr + "}; supported: " + SUPPORTED);
+        }
+    }
+
+    /** Builds the per-request renderer for one parsed part. */
+    private static Supplier<String> renderer(Part part) {
+        if (part instanceof Literal literal) {
+            String text = literal.text();
+            return () -> text;
+        }
+        Placeholder placeholder = (Placeholder) part;
+        List<String> args = placeholder.args();
+        switch (placeholder.kind()) {
+            case UUID:
+                return () -> java.util.UUID.randomUUID().toString();
+            case NOW:
+                return () -> Long.toString(System.currentTimeMillis());
+            case SEQ: {
+                AtomicLong counter = new AtomicLong(Long.parseLong(args.get(0)));
+                return () -> Long.toString(counter.getAndIncrement());
+            }
+            case INT: {
+                long min = Long.parseLong(args.get(0));
+                long max = Long.parseLong(args.get(1));
+                return () -> Long.toString(ThreadLocalRandom.current().nextLong(min, max + 1));
+            }
+            case ALPHA: {
+                int size = Integer.parseInt(args.get(0));
+                return () -> randomAlphanumeric(size);
+            }
+            case PICK: {
+                String[] choices = args.toArray(new String[0]);
+                return () -> choices[ThreadLocalRandom.current().nextInt(choices.length)];
+            }
+            default:
+                throw new IllegalStateException("unhandled generator " + placeholder.kind());
         }
     }
 

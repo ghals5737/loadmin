@@ -267,7 +267,14 @@
       </div>
       <div class="form-actions">
         <button class="primary" id="cfgStart" type="button">Start load test</button>
+        <button id="cfgExportK6" type="button">Export k6</button>
+        <button id="cfgExportGatling" type="button">Export Gatling</button>
         <span class="form-error" id="cfgError"></span>
+      </div>
+      <div class="hint" style="margin-top:8px">
+        Exported scripts run the same request from another process, so the load
+        stops competing with the application for CPU, threads and GC — keep this
+        page open while they run to watch the server side.
       </div>
     </div>
   </section>
@@ -625,6 +632,58 @@ $('cfgStart').addEventListener('click', function () {
     .catch(function (err) { $('cfgError').textContent = err.message; })
     .finally(function () { $('cfgStart').disabled = false; });
 });
+
+/* ---------- script export ----------
+   The built-in engine shares a JVM with the application it measures. Exporting
+   hands the same target, templates and load settings to a runner outside it. */
+
+function exportScript(format) {
+  var ep = selectedEndpoint;
+  if (!ep) { return; }
+  var hasBody = !$('cfgBodyField').classList.contains('hidden');
+  $('cfgError').textContent = '';
+  fetch('api/export/' + format, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      httpMethod: ep.httpMethod,
+      pathPattern: ep.path,
+      path: $('cfgPath').value.trim(),
+      body: hasBody ? $('cfgBody').value : null,
+      concurrency: parseInt($('cfgConcurrency').value, 10),
+      durationSeconds: parseInt($('cfgDuration').value, 10)
+    })
+  })
+    .then(function (res) {
+      if (!res.ok) {
+        return res.json().then(function (data) {
+          throw new Error(data.error || 'HTTP ' + res.status);
+        });
+      }
+      var name = fileNameOf(res.headers.get('Content-Disposition')) || ('loadmin-' + format + '.txt');
+      return res.text().then(function (text) { downloadText(name, text); });
+    })
+    .catch(function (err) { $('cfgError').textContent = err.message; });
+}
+
+function fileNameOf(disposition) {
+  var match = /filename="([^"]+)"/.exec(disposition || '');
+  return match ? match[1] : null;
+}
+
+function downloadText(name, text) {
+  var url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+  var link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(function () { URL.revokeObjectURL(url); }, 0);
+}
+
+$('cfgExportK6').addEventListener('click', function () { exportScript('k6'); });
+$('cfgExportGatling').addEventListener('click', function () { exportScript('gatling'); });
 
 /* ---------- run view ---------- */
 

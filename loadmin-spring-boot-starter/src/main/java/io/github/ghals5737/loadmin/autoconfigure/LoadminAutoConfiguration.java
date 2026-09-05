@@ -1,6 +1,7 @@
 package io.github.ghals5737.loadmin.autoconfigure;
 
 import java.nio.file.Paths;
+import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -10,6 +11,9 @@ import io.github.ghals5737.loadmin.core.LoadTestEndpointScanner;
 import io.github.ghals5737.loadmin.core.engine.LoadTestEngine;
 import io.github.ghals5737.loadmin.core.engine.LoadTestRun;
 import io.github.ghals5737.loadmin.core.engine.LoadTestRunRegistry;
+import io.github.ghals5737.loadmin.core.export.GatlingScriptExporter;
+import io.github.ghals5737.loadmin.core.export.K6ScriptExporter;
+import io.github.ghals5737.loadmin.core.export.ScriptExporter;
 import io.github.ghals5737.loadmin.core.history.RunHistoryStore;
 import io.micrometer.core.instrument.MeterRegistry;
 
@@ -57,6 +61,30 @@ public class LoadminAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    public TargetValidator loadminTargetValidator(LoadTestEndpointScanner scanner) {
+        return new TargetValidator(scanner);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(name = "loadminBaseUrl")
+    public Supplier<String> loadminBaseUrl(Environment environment) {
+        return new BaseUrlSupplier(environment);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public K6ScriptExporter k6ScriptExporter() {
+        return new K6ScriptExporter();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public GatlingScriptExporter gatlingScriptExporter() {
+        return new GatlingScriptExporter();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     @ConditionalOnClass(ObjectMapper.class)
     @ConditionalOnProperty(prefix = "loadmin.history", name = "enabled",
             havingValue = "true", matchIfMissing = true)
@@ -72,16 +100,9 @@ public class LoadminAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public LoadTestEngine loadTestEngine(LoadTestRunRegistry registry, LoadminProperties properties,
-            Environment environment, ObjectProvider<MeterRegistry> meterRegistry,
-            ObjectProvider<RunHistoryStore> historyStore) {
-        // Resolved lazily: local.server.port is only available once the web
-        // server has started, which is after this bean is created.
-        Supplier<String> baseUrl = () -> {
-            String port = environment.getProperty("local.server.port",
-                    environment.getProperty("server.port", "8080"));
-            String contextPath = environment.getProperty("server.servlet.context-path", "");
-            return "http://localhost:" + port + contextPath;
-        };
+            ObjectProvider<MeterRegistry> meterRegistry,
+            ObjectProvider<RunHistoryStore> historyStore,
+            @Qualifier("loadminBaseUrl") Supplier<String> baseUrl) {
         RunHistoryStore history = historyStore.getIfAvailable();
         Consumer<LoadTestRun> onFinished = history == null ? null : run -> history.save(run.view());
         return new LoadTestEngine(registry, baseUrl, meterRegistry.getIfAvailable(),
@@ -97,8 +118,15 @@ public class LoadminAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     public LoadminRunController loadminRunController(LoadTestEngine engine,
-            LoadTestRunRegistry registry, LoadTestEndpointScanner scanner) {
-        return new LoadminRunController(engine, registry, scanner);
+            LoadTestRunRegistry registry, TargetValidator targets) {
+        return new LoadminRunController(engine, registry, targets);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public LoadminExportController loadminExportController(List<ScriptExporter> exporters,
+            TargetValidator targets, @Qualifier("loadminBaseUrl") Supplier<String> baseUrl) {
+        return new LoadminExportController(exporters, targets, baseUrl);
     }
 
     @Bean
