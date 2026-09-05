@@ -14,3 +14,6 @@ out/
 
 # loadmin run history (written by the demo app)
 .loadmin/
+
+# 로컬 작업 메모 (공유용 아님)
+notes/
