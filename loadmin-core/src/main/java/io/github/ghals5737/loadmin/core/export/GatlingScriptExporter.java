@@ -39,7 +39,7 @@ public class GatlingScriptExporter implements ScriptExporter {
     public String render(ExportRequest request) {
         LoadTestSpec spec = request.spec();
         Set<Kind> used = EnumSet.noneOf(Kind.class);
-        List<String> sequences = new ArrayList<>();
+        List<String[]> counters = new ArrayList<>();
         List<String[]> steps = new ArrayList<>();
         for (LoadTestSpec.Step step : spec.steps()) {
             ValueTemplate path = ValueTemplate.compile(step.pathTemplate(), ValueTemplate.Mode.PATH);
@@ -50,8 +50,8 @@ public class GatlingScriptExporter implements ScriptExporter {
             steps.add(new String[] {
                     step.name(),
                     step.httpMethod().toLowerCase(),
-                    expression(path, used, sequences),
-                    body == null ? null : expression(body, used, sequences) });
+                    expression(path, used, counters),
+                    body == null ? null : expression(body, used, counters) });
         }
         String label = spec.label();
 
@@ -71,7 +71,7 @@ public class GatlingScriptExporter implements ScriptExporter {
         if (used.contains(Kind.INT) || used.contains(Kind.ALPHA) || used.contains(Kind.PICK)) {
             out.append("import java.util.concurrent.ThreadLocalRandom;\n");
         }
-        if (!sequences.isEmpty()) {
+        if (!counters.isEmpty()) {
             out.append("import java.util.concurrent.atomic.AtomicLong;\n");
         }
         out.append("\nimport io.gatling.javaapi.core.ScenarioBuilder;\n")
@@ -79,12 +79,11 @@ public class GatlingScriptExporter implements ScriptExporter {
                 .append("import io.gatling.javaapi.http.HttpProtocolBuilder;\n\n")
                 .append("public class ").append(CLASS_NAME).append(" extends Simulation {\n\n");
 
-        for (String sequence : sequences) {
-            String start = sequence.substring(sequence.lastIndexOf('_') + 1);
-            out.append("    private static final AtomicLong ").append(sequence)
-                    .append(" = new AtomicLong(").append(start).append("L);\n");
+        for (String[] counter : counters) {
+            out.append("    private static final AtomicLong ").append(counter[0])
+                    .append(" = new AtomicLong(").append(counter[1]).append("L);\n");
         }
-        if (!sequences.isEmpty()) {
+        if (!counters.isEmpty()) {
             out.append('\n');
         }
 
@@ -116,7 +115,7 @@ public class GatlingScriptExporter implements ScriptExporter {
         return out.toString();
     }
 
-    private String expression(ValueTemplate template, Set<Kind> used, List<String> sequences) {
+    private String expression(ValueTemplate template, Set<Kind> used, List<String[]> counters) {
         if (!template.dynamic()) {
             return "\"" + java(template.source()) + "\"";
         }
@@ -138,9 +137,16 @@ public class GatlingScriptExporter implements ScriptExporter {
                 case ALPHA -> joiner.add("randomAlpha(" + args.get(0) + ")");
                 case PICK -> joiner.add("pick(" + javaList(args) + ")");
                 case SEQ -> {
-                    String variable = "SEQ_" + (sequences.size() + 1) + "_" + args.get(0);
-                    sequences.add(variable);
+                    String variable = "SEQ_" + (counters.size() + 1);
+                    counters.add(new String[] { variable, args.get(0) });
                     joiner.add(variable + ".getAndIncrement()");
+                }
+                case CYCLE -> {
+                    String variable = "CYCLE_" + (counters.size() + 1);
+                    long min = Long.parseLong(args.get(0));
+                    long size = Long.parseLong(args.get(1)) - min + 1;
+                    counters.add(new String[] { variable, "0" });
+                    joiner.add("(" + min + "L + " + variable + ".getAndIncrement() % " + size + "L)");
                 }
                 default -> throw new IllegalStateException("unhandled generator " + placeholder.kind());
             }

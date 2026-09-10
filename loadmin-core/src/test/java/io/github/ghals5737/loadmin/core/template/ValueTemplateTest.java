@@ -6,8 +6,12 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -88,6 +92,58 @@ class ValueTemplateTest {
     }
 
     @Test
+    void cycleStaysInRangeAndCoversItEvenly() {
+        ValueTemplate template = ValueTemplate.compile("${cycle(10,14)}", Mode.PATH);
+        List<String> rendered = new ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            rendered.add(template.render());
+        }
+
+        // Walks the range in order and wraps: every key used exactly four times.
+        assertEquals(List.of("10", "11", "12", "13", "14"), rendered.subList(0, 5));
+        assertEquals(List.of("10", "11", "12", "13", "14"), rendered.subList(5, 10));
+        Map<String, Long> counts = rendered.stream()
+                .collect(Collectors.groupingBy(value -> value, Collectors.counting()));
+        assertEquals(Set.of(4L), Set.copyOf(counts.values()));
+    }
+
+    @Test
+    void cycleOfASingleValueAlwaysRendersIt() {
+        ValueTemplate template = ValueTemplate.compile("${cycle(7,7)}", Mode.PATH);
+
+        assertEquals("7", template.render());
+        assertEquals("7", template.render());
+    }
+
+    @Test
+    void cycleIsSharedAcrossThreads() throws Exception {
+        ValueTemplate template = ValueTemplate.compile("${cycle(1,4)}", Mode.PATH);
+        int threads = 8;
+        int perThread = 200;
+        ExecutorService pool = Executors.newFixedThreadPool(threads);
+        ConcurrentLinkedQueue<String> rendered = new ConcurrentLinkedQueue<>();
+        CountDownLatch done = new CountDownLatch(threads);
+        for (int t = 0; t < threads; t++) {
+            pool.execute(() -> {
+                try {
+                    for (int i = 0; i < perThread; i++) {
+                        rendered.add(template.render());
+                    }
+                } finally {
+                    done.countDown();
+                }
+            });
+        }
+        assertTrue(done.await(10, TimeUnit.SECONDS));
+        pool.shutdownNow();
+
+        Map<String, Long> counts = rendered.stream()
+                .collect(Collectors.groupingBy(value -> value, Collectors.counting()));
+        // 1600 renders over four keys, one counter: 400 each, no drift.
+        assertEquals(Set.of(400L), Set.copyOf(counts.values()));
+    }
+
+    @Test
     void pickChoosesFromTheGivenValues() {
         ValueTemplate template = ValueTemplate.compile("${pick(seoul|busan|jeju)}", Mode.PATH);
         Set<String> seen = new HashSet<>();
@@ -161,6 +217,10 @@ class ValueTemplateTest {
                         () -> ValueTemplate.compile("${int(1)}", Mode.PATH)),
                 () -> assertThrows(IllegalArgumentException.class,
                         () -> ValueTemplate.compile("${int(a,b)}", Mode.PATH)),
+                () -> assertThrows(IllegalArgumentException.class,
+                        () -> ValueTemplate.compile("${cycle(5,1)}", Mode.PATH)),
+                () -> assertThrows(IllegalArgumentException.class,
+                        () -> ValueTemplate.compile("${cycle(1)}", Mode.PATH)),
                 () -> assertThrows(IllegalArgumentException.class,
                         () -> ValueTemplate.compile("${alpha(0)}", Mode.PATH)),
                 () -> assertThrows(IllegalArgumentException.class,

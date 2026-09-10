@@ -12,8 +12,15 @@ import java.util.function.Supplier;
  *
  * <p>Syntax: {@code ${generator}} or {@code ${generator(args)}}; {@code $$}
  * renders a literal {@code $}. A placeholder ends at the first {@code }}.
- * Supported generators: {@code int(min,max)}, {@code seq}, {@code seq(start)},
- * {@code uuid}, {@code alpha(length)}, {@code pick(a|b|c)}, {@code now}.
+ * Supported generators: {@code int(min,max)}, {@code cycle(min,max)},
+ * {@code seq}, {@code seq(start)}, {@code uuid}, {@code alpha(length)},
+ * {@code pick(a|b|c)}, {@code now}.
+ *
+ * <p>{@code int} and {@code cycle} both stay inside a range — the difference is
+ * coverage. {@code int} draws at random, so over 500 requests some keys in a
+ * 500-wide range are hit several times and others not at all. {@code cycle}
+ * walks the range in order and wraps, so every key is used equally often, which
+ * is what you want when the range exists to bound what a write test creates.
  *
  * <p>Compile once per run, render per request: parsing happens up front and
  * rendering only walks the parsed parts. {@code seq} counters live in the
@@ -38,11 +45,12 @@ public final class ValueTemplate {
     private static final String PATH_FORBIDDEN = "/?#&=%;\\";
     private static final char[] ALPHANUM = "abcdefghijklmnopqrstuvwxyz0123456789".toCharArray();
     private static final int MAX_ALPHA_LENGTH = 256;
-    private static final String SUPPORTED = "int(min,max), seq, seq(start), uuid, alpha(length), pick(a|b|c), now";
+    private static final String SUPPORTED =
+            "int(min,max), cycle(min,max), seq, seq(start), uuid, alpha(length), pick(a|b|c), now";
 
     /** A generator that a placeholder can name. */
     public enum Kind {
-        INT, SEQ, UUID, ALPHA, PICK, NOW
+        INT, SEQ, CYCLE, UUID, ALPHA, PICK, NOW
     }
 
     /** One piece of a parsed template: fixed text, or a value to generate. */
@@ -185,23 +193,10 @@ public final class ValueTemplate {
                 long start = hasArgs && !args.isBlank() ? parseLong(args, expr) : 1L;
                 return new Placeholder(Kind.SEQ, List.of(Long.toString(start)));
             }
-            case "int": {
-                String[] bounds = hasArgs ? args.split(",", -1) : new String[0];
-                if (bounds.length != 2) {
-                    throw new IllegalArgumentException(
-                            "${" + expr + "} needs two bounds, e.g. ${int(1,20)}");
-                }
-                long min = parseLong(bounds[0], expr);
-                long max = parseLong(bounds[1], expr);
-                if (min > max) {
-                    throw new IllegalArgumentException(
-                            "${" + expr + "}: lower bound must not be greater than upper bound");
-                }
-                if (max == Long.MAX_VALUE) {
-                    throw new IllegalArgumentException("${" + expr + "}: upper bound is too large");
-                }
-                return new Placeholder(Kind.INT, List.of(Long.toString(min), Long.toString(max)));
-            }
+            case "int":
+                return range(Kind.INT, expr, hasArgs ? args : null);
+            case "cycle":
+                return range(Kind.CYCLE, expr, hasArgs ? args : null);
             case "alpha": {
                 long length = hasArgs && !args.isBlank() ? parseLong(args, expr) : 0L;
                 if (length < 1 || length > MAX_ALPHA_LENGTH) {
@@ -232,6 +227,25 @@ public final class ValueTemplate {
         }
     }
 
+    /** Parses the {@code (min,max)} shared by {@code int} and {@code cycle}. */
+    private static Placeholder range(Kind kind, String expr, String args) {
+        String[] bounds = args == null ? new String[0] : args.split(",", -1);
+        if (bounds.length != 2) {
+            throw new IllegalArgumentException(
+                    "${" + expr + "} needs two bounds, e.g. ${" + kind.name().toLowerCase() + "(1,20)}");
+        }
+        long min = parseLong(bounds[0], expr);
+        long max = parseLong(bounds[1], expr);
+        if (min > max) {
+            throw new IllegalArgumentException(
+                    "${" + expr + "}: lower bound must not be greater than upper bound");
+        }
+        if (max == Long.MAX_VALUE) {
+            throw new IllegalArgumentException("${" + expr + "}: upper bound is too large");
+        }
+        return new Placeholder(kind, List.of(Long.toString(min), Long.toString(max)));
+    }
+
     /** Builds the per-request renderer for one parsed part. */
     private static Supplier<String> renderer(Part part) {
         if (part instanceof Literal literal) {
@@ -253,6 +267,12 @@ public final class ValueTemplate {
                 long min = Long.parseLong(args.get(0));
                 long max = Long.parseLong(args.get(1));
                 return () -> Long.toString(ThreadLocalRandom.current().nextLong(min, max + 1));
+            }
+            case CYCLE: {
+                long min = Long.parseLong(args.get(0));
+                long size = Long.parseLong(args.get(1)) - min + 1;
+                AtomicLong counter = new AtomicLong();
+                return () -> Long.toString(min + Math.floorMod(counter.getAndIncrement(), size));
             }
             case ALPHA: {
                 int size = Integer.parseInt(args.get(0));

@@ -40,7 +40,7 @@ public class K6ScriptExporter implements ScriptExporter {
     public String render(ExportRequest request) {
         LoadTestSpec spec = request.spec();
         Set<Kind> used = EnumSet.noneOf(Kind.class);
-        List<String> sequences = new ArrayList<>();
+        List<String[]> counters = new ArrayList<>();
         List<String[]> steps = new ArrayList<>();
         for (LoadTestSpec.Step step : spec.steps()) {
             ValueTemplate path = ValueTemplate.compile(step.pathTemplate(), ValueTemplate.Mode.PATH);
@@ -51,8 +51,8 @@ public class K6ScriptExporter implements ScriptExporter {
             steps.add(new String[] {
                     step.name(),
                     step.httpMethod(),
-                    expression(path, used, sequences),
-                    body == null ? null : expression(body, used, sequences) });
+                    expression(path, used, counters),
+                    body == null ? null : expression(body, used, counters) });
         }
         boolean scenario = steps.size() > 1;
 
@@ -64,11 +64,12 @@ public class K6ScriptExporter implements ScriptExporter {
                 .append("// The load now comes from another process, so it no longer competes with\n")
                 .append("// the application for CPU, threads and GC. Keep /loadmin open while it runs\n")
                 .append("// to watch what the server does internally.\n");
-        if (!sequences.isEmpty()) {
+        if (!counters.isEmpty()) {
             out.append("//\n")
-                    .append("// Note: k6 runs every virtual user in its own JS runtime, so ${seq} cannot\n")
-                    .append("// be one shared counter. Each user counts on its own, started ")
-                    .append(SEQ_STRIDE_PER_VU).append(" apart.\n");
+                    .append("// Note: k6 runs every virtual user in its own JS runtime, so a counter\n")
+                    .append("// cannot be shared. Each user counts on its own — ${seq} values are kept\n")
+                    .append("// ").append(SEQ_STRIDE_PER_VU)
+                    .append(" apart so they stay distinct, and ${cycle} walks its range per user.\n");
         }
         out.append("\nimport http from 'k6/http';\n")
                 .append(scenario ? "import { check, group } from 'k6';\n\n" : "import { check } from 'k6';\n\n")
@@ -80,8 +81,8 @@ public class K6ScriptExporter implements ScriptExporter {
 
         appendHelpers(out, used);
 
-        for (String sequence : sequences) {
-            out.append("\nlet ").append(sequence).append(" = ").append(sequenceStart(sequence)).append(";\n");
+        for (String[] counter : counters) {
+            out.append("\nlet ").append(counter[0]).append(" = ").append(counter[1]).append(";\n");
         }
 
         out.append("\nexport default function () {\n");
@@ -110,13 +111,7 @@ public class K6ScriptExporter implements ScriptExporter {
         return out.toString();
     }
 
-    /** The sequence variable carries its start value in its name suffix. */
-    private static String sequenceStart(String variable) {
-        String start = variable.substring(variable.lastIndexOf('_') + 1);
-        return start + " + (__VU - 1) * " + SEQ_STRIDE_PER_VU;
-    }
-
-    private String expression(ValueTemplate template, Set<Kind> used, List<String> sequences) {
+    private String expression(ValueTemplate template, Set<Kind> used, List<String[]> counters) {
         if (!template.dynamic()) {
             return "'" + js(template.source()) + "'";
         }
@@ -136,9 +131,17 @@ public class K6ScriptExporter implements ScriptExporter {
                 case ALPHA -> joiner.add("randomAlpha(" + args.get(0) + ")");
                 case PICK -> joiner.add("pick([" + jsList(args) + "])");
                 case SEQ -> {
-                    String variable = "seq_" + (sequences.size() + 1) + "_" + args.get(0);
-                    sequences.add(variable);
+                    String variable = "seq_" + (counters.size() + 1);
+                    counters.add(new String[] {
+                            variable, args.get(0) + " + (__VU - 1) * " + SEQ_STRIDE_PER_VU });
                     joiner.add(variable + "++");
+                }
+                case CYCLE -> {
+                    String variable = "cycle_" + (counters.size() + 1);
+                    long min = Long.parseLong(args.get(0));
+                    long size = Long.parseLong(args.get(1)) - min + 1;
+                    counters.add(new String[] { variable, "0" });
+                    joiner.add("(" + min + " + " + variable + "++ % " + size + ")");
                 }
                 default -> throw new IllegalStateException("unhandled generator " + placeholder.kind());
             }

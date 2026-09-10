@@ -44,7 +44,19 @@ class ScriptExporterTest {
         assertTrue(script.contains("randomAlpha(6)"), script);
         assertTrue(script.contains("pick(['a', 'b'])"), script);
         assertTrue(script.contains("Date.now()"), script);
-        assertTrue(script.contains("seq_1_1++"), script);
+        assertTrue(script.contains("seq_1++"), script);
+    }
+
+    @Test
+    void cycleTranslatesToABoundedCounter() {
+        String script = k6.render(request("GET", "/api/users/{id}", "/api/users/${cycle(1,500)}", null));
+        String simulation = gatling.render(
+                request("GET", "/api/users/{id}", "/api/users/${cycle(1,500)}", null));
+
+        assertTrue(script.contains("let cycle_1 = 0;"), script);
+        assertTrue(script.contains("(1 + cycle_1++ % 500)"), script);
+        assertTrue(simulation.contains("AtomicLong CYCLE_1 = new AtomicLong(0L)"), simulation);
+        assertTrue(simulation.contains("(1L + CYCLE_1.getAndIncrement() % 500L)"), simulation);
     }
 
     @Test
@@ -62,7 +74,7 @@ class ScriptExporterTest {
         String withSeq = k6.render(request("GET", "/api/x", "/api/x/${seq(1000)}", null));
         String withoutSeq = k6.render(request("GET", "/api/x", "/api/x/1", null));
 
-        assertTrue(withSeq.contains("let seq_1_1000 = 1000 + (__VU - 1) * 1000000;"), withSeq);
+        assertTrue(withSeq.contains("let seq_1 = 1000 + (__VU - 1) * 1000000;"), withSeq);
         assertTrue(withSeq.contains("its own JS runtime"), withSeq);
         assertFalse(withoutSeq.contains("__VU"), withoutSeq);
     }
@@ -107,8 +119,8 @@ class ScriptExporterTest {
     void gatlingKeepsSeqShared() {
         String script = gatling.render(request("GET", "/api/x", "/api/x/${seq(500)}", null));
 
-        assertTrue(script.contains("AtomicLong SEQ_1_500 = new AtomicLong(500L)"), script);
-        assertTrue(script.contains("SEQ_1_500.getAndIncrement()"), script);
+        assertTrue(script.contains("AtomicLong SEQ_1 = new AtomicLong(500L)"), script);
+        assertTrue(script.contains("SEQ_1.getAndIncrement()"), script);
     }
 
     @Test

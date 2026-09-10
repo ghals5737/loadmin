@@ -88,8 +88,11 @@ public class LoadminRunController {
             return badRequest("httpMethod, pathPattern and path are required");
         }
         try {
-            ValueTemplate path = targets.check(
-                    request.httpMethod().toUpperCase(), request.pathPattern(), request.path());
+            targets.check(request.httpMethod().toUpperCase(), request.pathPattern(), request.path());
+            // A fresh template for the samples: the validator rendered from its
+            // own copy, which would leave ${cycle} and ${seq} mid-count here even
+            // though the run itself starts from the beginning.
+            ValueTemplate path = ValueTemplate.compile(request.path(), ValueTemplate.Mode.PATH);
             ValueTemplate body = request.body() == null || request.body().isBlank()
                     ? null
                     : ValueTemplate.compile(request.body(), ValueTemplate.Mode.BODY);

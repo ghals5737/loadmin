@@ -78,6 +78,7 @@ per request:
 | Placeholder | Renders |
 |-------------|---------|
 | `${int(1,20)}` | a random integer, both bounds included |
+| `${cycle(1,500)}` | the same range walked in order and wrapped |
 | `${seq}`, `${seq(1000)}` | an increasing counter, shared by all virtual users |
 | `${uuid}` | a random UUID |
 | `${alpha(8)}` | a random `[a-z0-9]` string |
@@ -91,6 +92,23 @@ per request:
 @PostMapping("/api/orders")
 public Order create(@RequestBody OrderRequest request) { ... }
 ```
+
+`int` and `cycle` both stay inside a range; the difference is coverage. `int`
+draws at random, so over 500 requests some keys are hit several times and others
+not at all. `cycle` walks the range in order, so every key is used equally often
+— which is what you want when the range is there to bound what a write test
+creates:
+
+```java
+@LoadTest(body = "{\"orderNo\": \"LT-${cycle(1,500)}\", \"qty\": ${int(1,5)}}")
+@PostMapping("/api/orders")
+public Order create(@RequestBody OrderRequest request) { ... }
+```
+
+That test touches 500 order numbers and no more, and the `LT-` prefix makes them
+one `delete from orders where order_no like 'LT-%'` away from gone. loadmin never
+deletes anything itself — it only sends requests, and it has no way to know what
+they created.
 
 The annotation only supplies the defaults — the UI shows rendered samples as you
 type and everything stays editable there. Only endpoints carrying `@LoadTest`
