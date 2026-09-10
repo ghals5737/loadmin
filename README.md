@@ -4,8 +4,8 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
 > ⚠️ **Work in progress** — the load engine, live results, server metric
-> overlays, request templates, run history and script export all work. `0.1.0`
-> is the first release; the API may still move.
+> overlays, request templates, scenarios, slow query capture, run history and
+> script export all work. The API may still move before 1.0.
 
 Annotation-driven load testing UI for Spring Boot — like Swagger UI, but for load tests.
 
@@ -19,20 +19,19 @@ latency graph while the load is running.
 
 ```kotlin
 // build.gradle.kts
-implementation("io.github.ghals5737:loadmin-spring-boot-starter:0.1.0")
+implementation("io.github.ghals5737:loadmin-spring-boot-starter:0.2.1")
 ```
 
 ```xml
 <dependency>
     <groupId>io.github.ghals5737</groupId>
     <artifactId>loadmin-spring-boot-starter</artifactId>
-    <version>0.1.0</version>
+    <version>0.2.1</version>
 </dependency>
 ```
 
-> Scenarios, slow query capture and load-aware comparison are on `main` and will
-> ship in 0.2.0. That release changes the stored run format, so history written
-> by 0.1.0 is skipped rather than read.
+> 0.2.0 changed the stored run format, so history written by 0.1.0 is skipped
+> rather than read.
 
 ## Quick start
 
