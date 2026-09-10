@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.function.Supplier;
 
 import io.github.ghals5737.loadmin.core.engine.LoadTestSpec;
+import io.github.ghals5737.loadmin.core.engine.RequestHeaders;
 import io.github.ghals5737.loadmin.core.export.ExportRequest;
 import io.github.ghals5737.loadmin.core.export.ScriptExporter;
 
@@ -43,7 +44,7 @@ public class LoadminExportController {
     /** Same shape as starting a run: a scenario, or one target given flat. */
     public record ExportScriptRequest(List<LoadminRunController.StepRequest> steps,
             String httpMethod, String pathPattern, String path, String body,
-            Integer concurrency, Integer durationSeconds) {
+            Integer concurrency, Integer durationSeconds, Map<String, String> headers) {
     }
 
     /** The formats this build can produce, for the UI to offer. */
@@ -63,7 +64,7 @@ public class LoadminExportController {
         List<LoadminRunController.StepRequest> steps = LoadminRunController.stepsOf(
                 new LoadminRunController.StartRunRequest(request.steps(), request.httpMethod(),
                         request.pathPattern(), request.path(), request.body(),
-                        request.concurrency(), request.durationSeconds()));
+                        request.concurrency(), request.durationSeconds(), request.headers()));
         if (steps.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of(
                     "error", "httpMethod, pathPattern and path are required"));
@@ -83,7 +84,8 @@ public class LoadminExportController {
             }
             ExportRequest exportRequest = new ExportRequest(baseUrl.get(), new LoadTestSpec(checked,
                     request.concurrency() == null ? 10 : request.concurrency(),
-                    request.durationSeconds() == null ? 15 : request.durationSeconds()));
+                    request.durationSeconds() == null ? 15 : request.durationSeconds()),
+                    RequestHeaders.checked(request.headers()));
             return ResponseEntity.ok()
                     .contentType(MediaType.TEXT_PLAIN)
                     .header(HttpHeaders.CONTENT_DISPOSITION,

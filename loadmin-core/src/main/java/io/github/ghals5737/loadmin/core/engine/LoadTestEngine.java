@@ -10,6 +10,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -94,11 +95,24 @@ public class LoadTestEngine {
     }
 
     public LoadTestRun start(LoadTestSpec spec) {
+        return start(spec, Map.of());
+    }
+
+    /**
+     * @param headers sent with every request of the run — an API that needs a
+     *                bearer token is otherwise only measurable as a 401. These
+     *                are deliberately <em>not</em> part of {@link LoadTestSpec}:
+     *                the spec is what gets written to history, and a token has
+     *                no business ending up in a file on disk.
+     */
+    public LoadTestRun start(LoadTestSpec spec, Map<String, String> headers) {
         validate(spec);
         List<CompiledStep> request = compile(spec);
+        Map<String, String> requestHeaders = Map.copyOf(headers);
         LoadTestRun run = new LoadTestRun(UUID.randomUUID().toString().substring(0, 8), spec);
         registry.add(run);
-        Thread controller = new Thread(() -> execute(run, request), "loadmin-run-" + run.id());
+        Thread controller = new Thread(() -> execute(run, request, requestHeaders),
+                "loadmin-run-" + run.id());
         controller.setDaemon(true);
         controller.start();
         return run;
@@ -139,7 +153,7 @@ public class LoadTestEngine {
     private record CompiledStep(HttpMethod method, ValueTemplate path, ValueTemplate body) {
     }
 
-    private void execute(LoadTestRun run, List<CompiledStep> steps) {
+    private void execute(LoadTestRun run, List<CompiledStep> steps, Map<String, String> headers) {
         LoadTestSpec spec = run.spec();
         notifyListeners(listener -> listener.started(run), run);
         String name = "loadmin-" + run.id();
@@ -157,6 +171,7 @@ public class LoadTestEngine {
             WebClient client = WebClient.builder()
                     .baseUrl(baseUrl.get())
                     .clientConnector(new ReactorClientHttpConnector(httpClient))
+                    .defaultHeaders(target -> headers.forEach(target::set))
                     .build();
 
             if (meterRegistry != null) {

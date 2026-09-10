@@ -113,6 +113,15 @@
   .samples div { padding: 1px 0; overflow-wrap: anywhere; }
   .samples.invalid { color: var(--status-critical); }
 
+  .headers { margin-top: 12px; }
+  .headers summary {
+    cursor: pointer; font-size: 12px; color: var(--ink-2); margin-bottom: 8px;
+  }
+  .headers textarea {
+    width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+    padding: 7px 10px; border-radius: 6px;
+    border: 1px solid var(--baseline); background: var(--page); color: var(--ink);
+  }
   .add-step { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
   .add-step select {
     font: inherit; padding: 6px 8px; border-radius: 6px;
@@ -264,6 +273,17 @@
     <h2>New load test</h2>
     <div class="card">
       <div id="cfgSteps"></div>
+      <details class="headers" id="cfgHeadersBox">
+        <summary>Headers</summary>
+        <textarea id="cfgHeaders" rows="3" spellcheck="false"
+                  placeholder="Authorization: Bearer eyJhbGciOi..."></textarea>
+        <div class="hint">
+          One per line, <code>Name: value</code>. Sent with every step — an API behind a
+          token otherwise only measures how fast it returns 401. Not written to history,
+          and exported scripts read secrets from the environment instead of embedding them.
+        </div>
+      </details>
+
       <div class="add-step">
         <select id="cfgAddStep"></select>
         <button id="cfgAddStepBtn" type="button">Add step</button>
@@ -644,6 +664,20 @@ function renderSteps() {
   });
 }
 
+/* "Name: value" lines to an object. Kept in the page only: the run stores the
+   spec, never these. */
+function headerPayload() {
+  var headers = {};
+  ($('cfgHeaders').value || '').split('\n').forEach(function (line) {
+    var at = line.indexOf(':');
+    if (at <= 0) { return; }
+    var name = line.slice(0, at).trim();
+    var value = line.slice(at + 1).trim();
+    if (name) { headers[name] = value; }
+  });
+  return headers;
+}
+
 function stepPayload() {
   return scenario.map(function (step) {
     return {
@@ -732,6 +766,7 @@ $('cfgStart').addEventListener('click', function () {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       steps: stepPayload(),
+      headers: headerPayload(),
       concurrency: parseInt($('cfgConcurrency').value, 10),
       durationSeconds: parseInt($('cfgDuration').value, 10)
     })
@@ -759,6 +794,7 @@ function exportScript(format) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       steps: stepPayload(),
+      headers: headerPayload(),
       concurrency: parseInt($('cfgConcurrency').value, 10),
       durationSeconds: parseInt($('cfgDuration').value, 10)
     })

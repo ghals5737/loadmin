@@ -8,6 +8,7 @@ import io.github.ghals5737.loadmin.core.engine.LoadTestEngine;
 import io.github.ghals5737.loadmin.core.engine.LoadTestRun;
 import io.github.ghals5737.loadmin.core.engine.LoadTestRunRegistry;
 import io.github.ghals5737.loadmin.core.engine.LoadTestSpec;
+import io.github.ghals5737.loadmin.core.engine.RequestHeaders;
 import io.github.ghals5737.loadmin.core.engine.RunView;
 import io.github.ghals5737.loadmin.core.template.ValueTemplate;
 
@@ -51,7 +52,8 @@ public class LoadminRunController {
      * fields, which is the same thing with one step.
      */
     public record StartRunRequest(List<StepRequest> steps, String httpMethod, String pathPattern,
-            String path, String body, Integer concurrency, Integer durationSeconds) {
+            String path, String body, Integer concurrency, Integer durationSeconds,
+            Map<String, String> headers) {
     }
 
     @PostMapping("/loadmin/api/runs")
@@ -68,7 +70,7 @@ public class LoadminRunController {
             LoadTestSpec spec = new LoadTestSpec(checked,
                     request.concurrency() == null ? 10 : request.concurrency(),
                     request.durationSeconds() == null ? 15 : request.durationSeconds());
-            LoadTestRun run = engine.start(spec);
+            LoadTestRun run = engine.start(spec, RequestHeaders.checked(request.headers()));
             return ResponseEntity.ok(Map.of("id", run.id()));
         } catch (IllegalArgumentException e) {
             return badRequest(e.getMessage());

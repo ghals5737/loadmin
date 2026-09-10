@@ -135,6 +135,27 @@ runtime, so `${seq}` becomes a per-user counter (each starting far enough apart
 to stay distinct). The generated script says so. Gatling runs in one JVM and
 keeps a single shared sequence.
 
+### Requests that need a token
+
+Most APIs answer 401 without one, and a load test against that measures how fast
+the app rejects you. Put the header in the **Headers** box on the config screen
+and it rides along with every step:
+
+```
+Authorization: Bearer eyJhbGciOi...
+```
+
+They live in the run only. The spec written to history has no room for them, so
+a token cannot end up in a file on disk, and exported scripts read secrets from
+the environment instead of embedding them:
+
+```bash
+AUTHORIZATION="Bearer eyJ..." BASE_URL=https://dev.example.com k6 run loadmin-api-secure.js
+```
+
+Header values may not contain line breaks — a value that could append headers of
+its own is rejected rather than cleaned up.
+
 ### Scenarios
 
 Real traffic is a flow, not one endpoint. Add steps on the config screen and
@@ -181,6 +202,20 @@ side by side:
 
 Runs and comparisons have their own URLs (`/loadmin/index.html#run/<id>`,
 `#compare/<id>,<id>`), so a result can be linked to in a PR or a chat.
+
+### A note for Kotlin projects
+
+`@Configuration` classes are proxied with CGLIB, which needs a constructor it can
+call. A Kotlin default value on an injected field produces a synthetic
+constructor instead and startup fails with `No default constructor found`. Drop
+the default — `@Value("\${loadmin.enabled:false}")` already has its own fallback:
+
+```kotlin
+@Configuration
+class SecurityConfiguration(
+    @Value("\${loadmin.enabled:false}") private val loadminEnabled: Boolean,   // no `= false`
+)
+```
 
 ### Configuration
 

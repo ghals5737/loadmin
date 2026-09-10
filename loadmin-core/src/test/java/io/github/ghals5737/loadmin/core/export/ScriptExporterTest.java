@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
+import java.util.Map;
 
 import io.github.ghals5737.loadmin.core.engine.LoadTestSpec;
 
@@ -164,6 +165,34 @@ class ScriptExporterTest {
         assertTrue(script.contains(".exec(http(\"sign in\")"), script);
         assertTrue(script.contains(".exec(http(\"GET /api/hello\")"), script);
         assertTrue(script.indexOf("sign in") < script.indexOf("GET /api/hello"), script);
+    }
+
+    @Test
+    void secretHeadersAreReadFromTheEnvironmentNotWrittenIntoTheScript() {
+        ExportRequest request = new ExportRequest("http://localhost:8080",
+                LoadTestSpec.single("GET", "/api/hello", "/api/hello", null, 20, 8),
+                Map.of("Authorization", "Bearer super-secret", "X-Tenant", "acme"));
+
+        String script = k6.render(request);
+        String simulation = gatling.render(request);
+
+        assertFalse(script.contains("super-secret"), script);
+        assertFalse(simulation.contains("super-secret"), simulation);
+        assertTrue(script.contains("'Authorization': __ENV.AUTHORIZATION || ''"), script);
+        assertTrue(script.contains("AUTHORIZATION=... k6 run"), script);
+        assertTrue(simulation.contains("System.getProperty(\"authorization\", \"\")"), simulation);
+        // A header that is not a secret is written out as it is.
+        assertTrue(script.contains("'X-Tenant': 'acme'"), script);
+        assertTrue(simulation.contains(".header(\"X-Tenant\", \"acme\")"), simulation);
+    }
+
+    @Test
+    void headersRideAlongWithEveryRequest() {
+        String script = k6.render(new ExportRequest("http://localhost:8080",
+                LoadTestSpec.single("GET", "/api/hello", "/api/hello", null, 20, 8),
+                Map.of("X-Tenant", "acme")));
+
+        assertTrue(script.contains("http.request('GET', url, null, { headers: HEADERS })"), script);
     }
 
     @Test

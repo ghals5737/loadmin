@@ -13,6 +13,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -91,6 +93,23 @@ public class SampleApiController {
                         + "where mod(a.x + b.x, ?) = 0",
                 Long.class, divisor);
         return Map.of("divisor", divisor, "matches", matches);
+    }
+
+    /**
+     * Answers 401 without a bearer token, the way most real APIs do. A run
+     * against this is 100% errors until the token is given in the run's
+     * headers — which is what makes those headers worth having.
+     */
+    @LoadTest
+    @GetMapping("/secure")
+    public ResponseEntity<Map<String, String>> secure(
+            @RequestHeader(value = "Authorization", required = false) String authorization)
+            throws InterruptedException {
+        if (authorization == null || !authorization.startsWith("Bearer ")) {
+            return ResponseEntity.status(401).body(Map.of("error", "missing bearer token"));
+        }
+        simulateWork();
+        return ResponseEntity.ok(Map.of("message", "authorised"));
     }
 
     // Intentionally NOT annotated — must not appear in the /loadmin list.
