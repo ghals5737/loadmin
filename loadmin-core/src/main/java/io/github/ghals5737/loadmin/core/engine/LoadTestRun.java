@@ -9,9 +9,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.Comparator;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
 
 import io.github.ghals5737.loadmin.core.metrics.ServerMetricsSample;
+import io.github.ghals5737.loadmin.core.query.SlowQuery;
 
 /**
  * Mutable state of one load test run. Written concurrently by the virtual-user
@@ -32,6 +35,17 @@ public class LoadTestRun {
 
     private final ConcurrentMap<Long, Bucket> buckets = new ConcurrentHashMap<>();
     private final List<ServerMetricsSample> serverMetrics = new CopyOnWriteArrayList<>();
+    private final ConcurrentMap<String, SlowStatement> slowQueries = new ConcurrentHashMap<>();
+
+    /** How many distinct statements to remember, so a run cannot grow without bound. */
+    private static final int MAX_SLOW_STATEMENTS = 200;
+    private static final int REPORTED_SLOW_STATEMENTS = 20;
+
+    private static final class SlowStatement {
+        final LongAdder count = new LongAdder();
+        final LongAdder totalMillis = new LongAdder();
+        final AtomicLong maxMillis = new AtomicLong();
+    }
 
     private static final class Bucket {
         final LongAdder count = new LongAdder();
@@ -85,6 +99,35 @@ public class LoadTestRun {
 
     void addServerSample(ServerMetricsSample sample) {
         serverMetrics.add(sample);
+    }
+
+    /**
+     * Called from the application's own request threads while the load is on,
+     * so it stays lock-free and bounded.
+     */
+    public void recordSlowQuery(String sql, long millis) {
+        SlowStatement statement = slowQueries.get(sql);
+        if (statement == null) {
+            if (slowQueries.size() >= MAX_SLOW_STATEMENTS) {
+                return;
+            }
+            statement = slowQueries.computeIfAbsent(sql, key -> new SlowStatement());
+        }
+        statement.count.increment();
+        statement.totalMillis.add(millis);
+        statement.maxMillis.accumulateAndGet(millis, Math::max);
+    }
+
+    /** The statements that cost the most time overall, worst first. */
+    private List<SlowQuery> slowQueries() {
+        return slowQueries.entrySet().stream()
+                .map(entry -> new SlowQuery(entry.getKey(),
+                        entry.getValue().count.sum(),
+                        entry.getValue().maxMillis.get(),
+                        entry.getValue().totalMillis.sum()))
+                .sorted(Comparator.comparingLong(SlowQuery::totalMillis).reversed())
+                .limit(REPORTED_SLOW_STATEMENTS)
+                .toList();
     }
 
     void complete(RunStatus finalStatus) {
@@ -146,6 +189,6 @@ public class LoadTestRun {
                 all.length == 0 ? 0 : all[all.length - 1]);
 
         return new RunView(id, status, error, spec, startedAtMillis, elapsedSeconds(),
-                summary, timeline, List.copyOf(serverMetrics));
+                summary, timeline, List.copyOf(serverMetrics), slowQueries());
     }
 }

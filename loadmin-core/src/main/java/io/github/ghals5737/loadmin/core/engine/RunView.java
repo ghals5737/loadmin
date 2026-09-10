@@ -3,10 +3,12 @@ package io.github.ghals5737.loadmin.core.engine;
 import java.util.List;
 
 import io.github.ghals5737.loadmin.core.metrics.ServerMetricsSample;
+import io.github.ghals5737.loadmin.core.query.SlowQuery;
 
 /**
- * Snapshot of a run for the UI: overall summary, per-second timeline and
- * server-side metric samples. Safe to compute while the run is still going.
+ * Snapshot of a run for the UI: overall summary, per-second timeline, server
+ * metric samples and any slow SQL caught while the load was on. Safe to compute
+ * while the run is still going.
  */
 public record RunView(
         String id,
@@ -17,7 +19,8 @@ public record RunView(
         long elapsedSeconds,
         Summary summary,
         List<TimelinePoint> timeline,
-        List<ServerMetricsSample> serverMetrics) {
+        List<ServerMetricsSample> serverMetrics,
+        List<SlowQuery> slowQueries) {
 
     public record Summary(
             long requests,

@@ -1,23 +1,28 @@
 package io.github.ghals5737.loadmin.autoconfigure;
 
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Consumer;
 import java.util.function.Supplier;
+
+import javax.sql.DataSource;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.github.ghals5737.loadmin.core.LoadTestEndpointScanner;
 import io.github.ghals5737.loadmin.core.engine.LoadTestEngine;
-import io.github.ghals5737.loadmin.core.engine.LoadTestRun;
 import io.github.ghals5737.loadmin.core.engine.LoadTestRunRegistry;
+import io.github.ghals5737.loadmin.core.engine.RunListener;
 import io.github.ghals5737.loadmin.core.export.GatlingScriptExporter;
 import io.github.ghals5737.loadmin.core.export.K6ScriptExporter;
 import io.github.ghals5737.loadmin.core.export.ScriptExporter;
 import io.github.ghals5737.loadmin.core.history.RunHistoryStore;
+import io.github.ghals5737.loadmin.core.query.SlowQueryDataSource;
+import io.github.ghals5737.loadmin.core.query.SlowQueryRecorder;
 import io.micrometer.core.instrument.MeterRegistry;
 
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -57,6 +62,38 @@ public class LoadminAutoConfiguration {
     @ConditionalOnMissingBean
     public LoadTestRunRegistry loadTestRunRegistry() {
         return new LoadTestRunRegistry();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(prefix = "loadmin.slow-query", name = "enabled", havingValue = "true")
+    public SlowQueryRecorder loadminSlowQueryRecorder(LoadminProperties properties) {
+        return new SlowQueryRecorder(properties.getSlowQuery().getThreshold().toMillis());
+    }
+
+    /**
+     * Wraps the application's DataSource so statements can be timed during a
+     * run. Static, and resolving the recorder lazily, so declaring a
+     * BeanPostProcessor does not drag the rest of the configuration into being
+     * created too early.
+     */
+    @Bean
+    // Deliberately a property condition, not @ConditionalOnBean: a
+    // BeanPostProcessor is created before ordinary beans are registered, so a
+    // bean condition here evaluates too early to be trustworthy.
+    @ConditionalOnProperty(prefix = "loadmin.slow-query", name = "enabled", havingValue = "true")
+    static BeanPostProcessor loadminSlowQueryDataSourcePostProcessor(
+            ObjectProvider<SlowQueryRecorder> recorder) {
+        return new BeanPostProcessor() {
+            @Override
+            public Object postProcessAfterInitialization(Object bean, String beanName) {
+                if (!(bean instanceof DataSource dataSource)) {
+                    return bean;
+                }
+                SlowQueryRecorder found = recorder.getIfAvailable();
+                return found == null ? bean : SlowQueryDataSource.wrap(dataSource, found);
+            }
+        };
     }
 
     @Bean
@@ -102,11 +139,19 @@ public class LoadminAutoConfiguration {
     public LoadTestEngine loadTestEngine(LoadTestRunRegistry registry, LoadminProperties properties,
             ObjectProvider<MeterRegistry> meterRegistry,
             ObjectProvider<RunHistoryStore> historyStore,
+            ObjectProvider<SlowQueryRecorder> slowQueryRecorder,
             @Qualifier("loadminBaseUrl") Supplier<String> baseUrl) {
+        List<RunListener> listeners = new ArrayList<>();
         RunHistoryStore history = historyStore.getIfAvailable();
-        Consumer<LoadTestRun> onFinished = history == null ? null : run -> history.save(run.view());
+        if (history != null) {
+            listeners.add(new HistoryRunListener(history));
+        }
+        SlowQueryRecorder recorder = slowQueryRecorder.getIfAvailable();
+        if (recorder != null) {
+            listeners.add(new SlowQueryRunListener(recorder));
+        }
         return new LoadTestEngine(registry, baseUrl, meterRegistry.getIfAvailable(),
-                properties.getMaxConcurrency(), properties.getMaxDurationSeconds(), onFinished);
+                properties.getMaxConcurrency(), properties.getMaxDurationSeconds(), listeners);
     }
 
     @Bean

@@ -135,6 +135,13 @@
     display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline;
   }
   .baseline .label { color: var(--muted); }
+  .slow-queries { padding: 14px 16px 4px; margin-bottom: 14px; }
+  .slow-queries h3 { margin: 0 0 4px; font-size: 13px; }
+  .slow-queries .sub { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+  .slow-queries td.sql {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+    overflow-wrap: anywhere;
+  }
   .delta-better { color: var(--good-text); font-weight: 600; }
   .delta-worse { color: var(--status-critical); font-weight: 600; }
   .delta-same { color: var(--muted); }
@@ -290,6 +297,7 @@
     </div>
     <div class="cards" id="summaryCards"></div>
     <div class="baseline hidden" id="runBaseline"></div>
+    <div id="slowQueries"></div>
     <div id="charts"></div>
     <details class="data-table card">
       <summary>Per-second data table</summary>
@@ -829,7 +837,35 @@ function renderRun(view) {
   }).join('');
 
   renderCharts(view);
+  renderSlowQueries(view);
   renderDataTable(view);
+}
+
+/* Only shown when something was actually caught: the capture is opt-in
+   (loadmin.slow-query.enabled), so an empty list usually means it is off. */
+function renderSlowQueries(view) {
+  var queries = view.slowQueries || [];
+  var host = $('slowQueries');
+  if (!queries.length) {
+    host.innerHTML = '';
+    return;
+  }
+  var rows = queries.map(function (q) {
+    return '<tr><td class="sql">' + esc(q.sql) + '</td>' +
+      '<td class="num">' + fmt(q.count) + '</td>' +
+      '<td class="num">' + fmt(Math.round(q.totalMillis / q.count)) + ' ms</td>' +
+      '<td class="num">' + fmt(q.maxMillis) + ' ms</td>' +
+      '<td class="num">' + fmt(q.totalMillis) + ' ms</td></tr>';
+  }).join('');
+  host.innerHTML =
+    '<div class="card slow-queries">' +
+    '<h3>Slow queries</h3>' +
+    '<div class="sub">SQL that crossed the threshold while the load was on, ' +
+    'by total time — a query that is slightly slow very often costs more than one rare outlier.</div>' +
+    '<div class="table-scroll"><table class="list">' +
+    '<thead><tr><th>Statement</th><th class="num">count</th><th class="num">avg</th>' +
+    '<th class="num">max</th><th class="num">total</th></tr></thead>' +
+    '<tbody>' + rows + '</tbody></table></div></div>';
 }
 
 function chartHost(id) {

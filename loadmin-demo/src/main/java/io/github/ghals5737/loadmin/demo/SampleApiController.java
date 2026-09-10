@@ -76,6 +76,23 @@ public class SampleApiController {
         return Map.of("q", q, "page", page);
     }
 
+    /**
+     * Deliberately expensive: a cross join over generated ranges, so the slow
+     * query capture has something real to catch. The divisor changes per call —
+     * with a constant one H2 answers the repeat executions from cache and the
+     * endpoint stops being slow after the first request.
+     */
+    @LoadTest
+    @GetMapping("/report")
+    public Map<String, Object> report() {
+        int divisor = ThreadLocalRandom.current().nextInt(3, 97);
+        Long matches = jdbc.queryForObject(
+                "select count(*) from system_range(1, 40000) a, system_range(1, 40) b "
+                        + "where mod(a.x + b.x, ?) = 0",
+                Long.class, divisor);
+        return Map.of("divisor", divisor, "matches", matches);
+    }
+
     // Intentionally NOT annotated — must not appear in the /loadmin list.
     @GetMapping("/plain")
     public Map<String, String> plain() {

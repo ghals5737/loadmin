@@ -17,6 +17,7 @@ import io.github.ghals5737.loadmin.core.engine.LoadTestSpec;
 import io.github.ghals5737.loadmin.core.engine.RunStatus;
 import io.github.ghals5737.loadmin.core.engine.RunView;
 import io.github.ghals5737.loadmin.core.metrics.ServerMetricsSample;
+import io.github.ghals5737.loadmin.core.query.SlowQuery;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -90,7 +91,7 @@ class RunHistoryStoreTest {
         RunHistoryStore store = new RunHistoryStore(dir, 10, mapper);
         store.save(new RunView("previous", RunStatus.COMPLETED, null,
                 new LoadTestSpec("GET", "/api/users/{id}", "/api/users/7", null, 10, 15),
-                1000, 15, summary(30), List.of(), List.of()));
+                1000, 15, summary(30), List.of(), List.of(), List.of()));
 
         LoadTestSpec now = new LoadTestSpec("GET", "/api/users/{id}", "/api/users/${int(1,20)}", null, 10, 15);
         RunView baseline = store.baselineFor("current", now, 2000);
@@ -165,7 +166,8 @@ class RunHistoryStoreTest {
                 new LoadTestSpec(method, pattern, pattern, null, concurrency, 15),
                 startedAt, 15, summary(p95),
                 List.of(new RunView.TimelinePoint(0, 100, 0, 20, p95)),
-                List.of(new ServerMetricsSample(0, Map.of("tomcatThreadsBusy", 4.0))));
+                List.of(new ServerMetricsSample(0, Map.of("tomcatThreadsBusy", 4.0))),
+                List.of(new SlowQuery("select 1", 2, 120, 200)));
     }
 
     private static RunView.Summary summary(long p95) {

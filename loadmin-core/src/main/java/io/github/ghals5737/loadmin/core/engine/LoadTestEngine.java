@@ -8,6 +8,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -51,26 +52,44 @@ public class LoadTestEngine {
     private final MeterRegistry meterRegistry;
     private final int maxConcurrency;
     private final int maxDurationSeconds;
-    private final Consumer<LoadTestRun> onFinished;
+    private final List<RunListener> listeners;
 
     public LoadTestEngine(LoadTestRunRegistry registry, Supplier<String> baseUrl,
             MeterRegistry meterRegistry, int maxConcurrency, int maxDurationSeconds) {
-        this(registry, baseUrl, meterRegistry, maxConcurrency, maxDurationSeconds, null);
+        this(registry, baseUrl, meterRegistry, maxConcurrency, maxDurationSeconds, List.of());
     }
 
     /**
-     * @param onFinished called once per run after it stops, whatever its
-     *                   outcome; used to record history. May be {@code null}.
+     * @param onFinished called once per run after it stops, whatever its outcome
+     * @deprecated use the {@link RunListener} constructor
      */
+    @Deprecated
     public LoadTestEngine(LoadTestRunRegistry registry, Supplier<String> baseUrl,
             MeterRegistry meterRegistry, int maxConcurrency, int maxDurationSeconds,
             Consumer<LoadTestRun> onFinished) {
+        this(registry, baseUrl, meterRegistry, maxConcurrency, maxDurationSeconds,
+                onFinished == null ? List.of() : List.of(new RunListener() {
+                    @Override
+                    public void finished(LoadTestRun run) {
+                        onFinished.accept(run);
+                    }
+                }));
+    }
+
+    /**
+     * @param listeners notified as each run starts and stops; a listener that
+     *                  throws is logged and ignored, never allowed to change the
+     *                  outcome of a run
+     */
+    public LoadTestEngine(LoadTestRunRegistry registry, Supplier<String> baseUrl,
+            MeterRegistry meterRegistry, int maxConcurrency, int maxDurationSeconds,
+            List<RunListener> listeners) {
         this.registry = registry;
         this.baseUrl = baseUrl;
         this.meterRegistry = meterRegistry;
         this.maxConcurrency = maxConcurrency;
         this.maxDurationSeconds = maxDurationSeconds;
-        this.onFinished = onFinished;
+        this.listeners = List.copyOf(listeners);
     }
 
     public LoadTestRun start(LoadTestSpec spec) {
@@ -114,6 +133,7 @@ public class LoadTestEngine {
 
     private void execute(LoadTestRun run, CompiledRequest request) {
         LoadTestSpec spec = run.spec();
+        notifyListeners(listener -> listener.started(run), run);
         String name = "loadmin-" + run.id();
         ConnectionProvider connections = ConnectionProvider.create(name, spec.concurrency());
         LoopResources loops = LoopResources.create(name + "-io", 1,
@@ -158,19 +178,19 @@ public class LoadTestEngine {
             workers.shutdownNow();
             connections.dispose();
             loops.dispose();
-            notifyFinished(run);
+            notifyListeners(listener -> listener.finished(run), run);
         }
     }
 
     /** A listener must never turn a finished run into a failed one. */
-    private void notifyFinished(LoadTestRun run) {
-        if (onFinished == null) {
-            return;
-        }
-        try {
-            onFinished.accept(run);
-        } catch (RuntimeException e) {
-            LOG.log(System.Logger.Level.WARNING, "loadmin: run listener failed for " + run.id(), e);
+    private void notifyListeners(Consumer<RunListener> notification, LoadTestRun run) {
+        for (RunListener listener : listeners) {
+            try {
+                notification.accept(listener);
+            } catch (RuntimeException e) {
+                LOG.log(System.Logger.Level.WARNING,
+                        "loadmin: run listener failed for " + run.id(), e);
+            }
         }
     }
 

@@ -86,7 +86,7 @@ loadmin/
 
 ### Phase 3 — 확장 (후순위)
 - [x] k6/Gatling 스크립트 export (진지 모드 — 자체 완결 k6 스크립트 + Gatling Java DSL, 실제 실행/컴파일 검증)
-- [ ] 느린 쿼리 캡처 연동
+- [x] 느린 쿼리 캡처 연동 (DataSource 프록시, run 중에만 수집, 기본 off)
 - [ ] 시나리오 (여러 API 순차 호출)
 
 ## 6. 지금 당장 할 일

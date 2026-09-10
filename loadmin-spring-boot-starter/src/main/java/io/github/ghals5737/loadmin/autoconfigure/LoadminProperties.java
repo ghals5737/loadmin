@@ -1,5 +1,7 @@
 package io.github.ghals5737.loadmin.autoconfigure;
 
+import java.time.Duration;
+
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties("loadmin")
@@ -21,6 +23,8 @@ public class LoadminProperties {
     private int maxDurationSeconds = 300;
 
     private final History history = new History();
+
+    private final SlowQuery slowQuery = new SlowQuery();
 
     public boolean isEnabled() {
         return enabled;
@@ -48,6 +52,46 @@ public class LoadminProperties {
 
     public History getHistory() {
         return history;
+    }
+
+    public SlowQuery getSlowQuery() {
+        return slowQuery;
+    }
+
+    /**
+     * Capturing the SQL that was slow while the load was on.
+     *
+     * <p>Off by default: collecting it means putting a wrapper around the
+     * application's own DataSource, which is more intrusion than a load testing
+     * tool should apply without being asked.
+     */
+    public static class SlowQuery {
+
+        /**
+         * Whether to wrap the DataSource and time statements during runs.
+         */
+        private boolean enabled = false;
+
+        /**
+         * Statements at least this slow are recorded; faster ones are not kept.
+         */
+        private Duration threshold = Duration.ofMillis(100);
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public Duration getThreshold() {
+            return threshold;
+        }
+
+        public void setThreshold(Duration threshold) {
+            this.threshold = threshold;
+        }
     }
 
     /**

@@ -114,6 +114,27 @@ runtime, so `${seq}` becomes a per-user counter (each starting far enough apart
 to stay distinct). The generated script says so. Gatling runs in one JVM and
 keeps a single shared sequence.
 
+### Slow queries
+
+The metric overlay says the connection pool was busy; it does not say which
+statement kept it busy. With capture on, the SQL that crossed a threshold while
+the load was on is listed with the run — ranked by total time, because a
+statement that is slightly slow very often costs more than one rare outlier:
+
+![slow queries caught during a run](docs/screenshot-slow-queries.png)
+
+```yaml
+loadmin:
+  slow-query:
+    enabled: true      # off by default: this wraps your DataSource
+    threshold: 50ms
+```
+
+It is off by default on purpose. Collecting the SQL means putting a wrapper
+around the application's own `DataSource`, and a load testing tool should not do
+that to you unasked. While no run is going, the wrapper passes every call
+straight through.
+
 ### Run history
 
 Finished runs are stored as JSON under `.loadmin/history`, so results survive a
@@ -137,6 +158,8 @@ Runs and comparisons have their own URLs (`/loadmin/index.html#run/<id>`,
 | `loadmin.history.enabled` | `true` | Write finished runs to disk |
 | `loadmin.history.dir` | `.loadmin/history` | Where run files are written |
 | `loadmin.history.max-runs` | `100` | Runs to keep; the oldest are deleted |
+| `loadmin.slow-query.enabled` | `false` | Wrap the DataSource to capture slow SQL during runs |
+| `loadmin.slow-query.threshold` | `100ms` | Statements at least this slow are recorded |
 
 ### Server metric overlay
 
