@@ -783,8 +783,8 @@ function renderBaselineRow(view, base) {
   var row = $('runBaseline');
   row.classList.remove('hidden');
   row.innerHTML =
-    '<span class="label">vs previous run (' + esc(ago(base.startedAtMillis)) + ', ' +
-      esc(base.spec.concurrency) + ' users):</span>' +
+    '<span class="label">vs previous run at ' + esc(view.spec.concurrency) + ' users (' +
+      esc(ago(base.startedAtMillis)) + '):</span>' +
     delta('p95', a.p95, b.p95, true, 0, 'ms') +
     delta('p50', a.p50, b.p50, true, 0, 'ms') +
     delta('req/s', a.rps, b.rps, false, 1, '') +
@@ -1068,7 +1068,13 @@ function renderCompare(before, after) {
       (pct == null ? '' : ' / ' + sign + fmt(Math.abs(pct), 0) + '%') + '</td></tr>';
   }).join('');
 
-  $('compareTable').innerHTML = '<table class="list">' +
+  var loadWarning = before.spec.concurrency === after.spec.concurrency ? '' :
+    '<div class="hint" style="padding: 10px 16px 0; color: var(--status-critical)">' +
+    'These runs used different loads (' + esc(before.spec.concurrency) + ' vs ' +
+    esc(after.spec.concurrency) + ' users). Latency rises with load, so read the ' +
+    'change as a difference in the test, not in the endpoint.</div>';
+
+  $('compareTable').innerHTML = loadWarning + '<table class="list">' +
     '<thead><tr><th></th>' +
     '<th class="num">' + esc(ago(before.startedAtMillis)) + ' · ' + esc(before.spec.concurrency) + ' users</th>' +
     '<th class="num">' + esc(ago(after.startedAtMillis)) + ' · ' + esc(after.spec.concurrency) + ' users</th>' +

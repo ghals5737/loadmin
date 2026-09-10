@@ -90,8 +90,13 @@ public class RunHistoryStore {
 
     /**
      * The run to compare against: the most recent completed run of the same
-     * endpoint that started before this one. {@code null} when there is nothing
-     * to compare with yet.
+     * endpoint <em>under the same load</em> that started before this one.
+     * {@code null} when there is nothing comparable yet.
+     *
+     * <p>The load has to match. A run with 40 concurrent users next to one with
+     * 5 shows a much worse p95, and presenting that as a delta invites reading
+     * a heavier test as a regression. Runs at different loads can still be
+     * compared explicitly from the history list, where both loads are on screen.
      */
     public RunView baselineFor(String runId, LoadTestSpec spec, long startedAtMillis) {
         HistoryEntry baseline = list().stream()
@@ -100,6 +105,7 @@ public class RunHistoryStore {
                 .filter(entry -> entry.status() == RunStatus.COMPLETED)
                 .filter(entry -> entry.summary().requests() > 0)
                 .filter(entry -> entry.sameTarget(spec))
+                .filter(entry -> entry.sameLoad(spec))
                 .max(Comparator.comparingLong(HistoryEntry::startedAtMillis))
                 .orElse(null);
         return baseline == null ? null : load(baseline.id());

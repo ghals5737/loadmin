@@ -100,6 +100,22 @@ class RunHistoryStoreTest {
     }
 
     @Test
+    void aRunAtADifferentLoadIsNotABaseline(@TempDir Path dir) {
+        RunHistoryStore store = new RunHistoryStore(dir, 10, mapper);
+        store.save(run("light", 1000, RunStatus.COMPLETED, "GET", "/api/users/{id}", 30, 5));
+        store.save(run("heavy", 2000, RunStatus.COMPLETED, "GET", "/api/users/{id}", 90, 40));
+
+        LoadTestSpec at40 = new LoadTestSpec("GET", "/api/users/{id}", "/api/users/1", null, 40, 15);
+        LoadTestSpec at5 = new LoadTestSpec("GET", "/api/users/{id}", "/api/users/1", null, 5, 15);
+
+        // Latency is a function of load, so only the run at the same load counts.
+        assertEquals("heavy", store.baselineFor("current", at40, 3000).id());
+        assertEquals("light", store.baselineFor("current", at5, 3000).id());
+        assertNull(store.baselineFor("current",
+                new LoadTestSpec("GET", "/api/users/{id}", "/api/users/1", null, 99, 15), 3000));
+    }
+
+    @Test
     void noBaselineWhenNothingComparableExists(@TempDir Path dir) {
         RunHistoryStore store = new RunHistoryStore(dir, 10, mapper);
         store.save(run("other", 1000, RunStatus.COMPLETED, "POST", "/api/orders", 30));
@@ -140,8 +156,13 @@ class RunHistoryStoreTest {
 
     private static RunView run(String id, long startedAt, RunStatus status,
             String method, String pattern, long p95) {
+        return run(id, startedAt, status, method, pattern, p95, 10);
+    }
+
+    private static RunView run(String id, long startedAt, RunStatus status,
+            String method, String pattern, long p95, int concurrency) {
         return new RunView(id, status, null,
-                new LoadTestSpec(method, pattern, pattern, null, 10, 15),
+                new LoadTestSpec(method, pattern, pattern, null, concurrency, 15),
                 startedAt, 15, summary(p95),
                 List.of(new RunView.TimelinePoint(0, 100, 0, 20, p95)),
                 List.of(new ServerMetricsSample(0, Map.of("tomcatThreadsBusy", 4.0))));

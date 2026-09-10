@@ -23,13 +23,25 @@ public record HistoryEntry(String id, long startedAtMillis, RunStatus status,
     }
 
     /**
-     * Whether this run hit the same endpoint as {@code other} — the condition
-     * for two runs to be comparable at all. The path template may differ (a
-     * wider {@code ${int(...)}} range is still the same endpoint); the mapping
-     * pattern and method are what must match.
+     * Whether this run hit the same endpoint as {@code other}. The path
+     * template may differ (a wider {@code ${int(...)}} range is still the same
+     * endpoint); the mapping pattern and method are what must match.
      */
     public boolean sameTarget(LoadTestSpec other) {
         return spec.httpMethod().equals(other.httpMethod())
                 && spec.pathPattern().equals(other.pathPattern());
+    }
+
+    /**
+     * Whether this run pushed the same amount of load as {@code other}.
+     *
+     * <p>Latency is a function of load: 40 users against an endpoint will
+     * always look worse than 5. Comparing across different concurrency reads
+     * like a regression when it is only a heavier test, so an automatic
+     * comparison requires the load to match. Duration may differ — throughput
+     * and percentiles are rates, not totals.
+     */
+    public boolean sameLoad(LoadTestSpec other) {
+        return spec.concurrency() == other.concurrency();
     }
 }
