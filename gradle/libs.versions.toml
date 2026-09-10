@@ -1,9 +1,18 @@
 [versions]
 spring-boot = "3.5.7"
 maven-publish = "0.37.0"
+# Runtime dependencies of the starter, declared with versions so the published
+# POM does not have to import the Boot BOM. Keep them at what spring-boot
+# manages above; a consuming application's own Boot version overrides them.
+spring-framework = "6.2.12"
+reactor-netty = "1.2.11"
+micrometer = "1.15.5"
 
 [libraries]
 spring-boot-dependencies = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
+spring-webflux = { module = "org.springframework:spring-webflux", version.ref = "spring-framework" }
+reactor-netty-http = { module = "io.projectreactor.netty:reactor-netty-http", version.ref = "reactor-netty" }
+micrometer-core = { module = "io.micrometer:micrometer-core", version.ref = "micrometer" }
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
