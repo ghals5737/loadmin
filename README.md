@@ -19,14 +19,14 @@ latency graph while the load is running.
 
 ```kotlin
 // build.gradle.kts
-implementation("io.github.ghals5737:loadmin-spring-boot-starter:0.2.1")
+implementation("io.github.ghals5737:loadmin-spring-boot-starter:0.2.2")
 ```
 
 ```xml
 <dependency>
     <groupId>io.github.ghals5737</groupId>
     <artifactId>loadmin-spring-boot-starter</artifactId>
-    <version>0.2.1</version>
+    <version>0.2.2</version>
 </dependency>
 ```
 
