@@ -34,6 +34,8 @@ public class LoadTestRun {
     private volatile long endedNanos = -1;
 
     private final ConcurrentMap<Long, Bucket> buckets = new ConcurrentHashMap<>();
+    /** Same measurements, split by scenario step rather than by second. */
+    private final ConcurrentMap<Integer, Bucket> stepBuckets = new ConcurrentHashMap<>();
     private final List<ServerMetricsSample> serverMetrics = new CopyOnWriteArrayList<>();
     private final ConcurrentMap<String, SlowStatement> slowQueries = new ConcurrentHashMap<>();
 
@@ -86,9 +88,13 @@ public class LoadTestRun {
         return stopRequested;
     }
 
-    void record(long latencyMillis, boolean isError) {
+    void record(int step, long latencyMillis, boolean isError) {
         long second = (System.nanoTime() - startNanos) / 1_000_000_000L;
-        Bucket bucket = buckets.computeIfAbsent(second, s -> new Bucket());
+        add(buckets.computeIfAbsent(second, s -> new Bucket()), latencyMillis, isError);
+        add(stepBuckets.computeIfAbsent(step, s -> new Bucket()), latencyMillis, isError);
+    }
+
+    private static void add(Bucket bucket, long latencyMillis, boolean isError) {
         bucket.count.increment();
         if (isError) {
             bucket.errors.increment();
@@ -116,6 +122,29 @@ public class LoadTestRun {
         statement.count.increment();
         statement.totalMillis.add(millis);
         statement.maxMillis.accumulateAndGet(millis, Math::max);
+    }
+
+    /** Per-step totals, in scenario order. */
+    private List<RunView.StepSummary> stepSummaries(double activeSeconds) {
+        List<RunView.StepSummary> summaries = new ArrayList<>(spec.steps().size());
+        for (int index = 0; index < spec.steps().size(); index++) {
+            Bucket bucket = stepBuckets.get(index);
+            long count = bucket == null ? 0 : bucket.count.sum();
+            long errors = bucket == null ? 0 : bucket.errors.sum();
+            long[] latencies = bucket == null ? new long[0]
+                    : bucket.latencies.stream().mapToLong(Long::longValue).sorted().toArray();
+            summaries.add(new RunView.StepSummary(index, spec.steps().get(index).name(),
+                    new RunView.Summary(
+                            count,
+                            errors,
+                            count == 0 ? 0.0 : (double) errors / count,
+                            count / activeSeconds,
+                            LatencyStats.percentile(latencies, 50),
+                            LatencyStats.percentile(latencies, 95),
+                            LatencyStats.percentile(latencies, 99),
+                            latencies.length == 0 ? 0 : latencies[latencies.length - 1])));
+        }
+        return summaries;
     }
 
     /** The statements that cost the most time overall, worst first. */
@@ -178,6 +207,7 @@ public class LoadTestRun {
 
         long[] all = allLatencies.stream().mapToLong(Long::longValue).sorted().toArray();
         double activeSeconds = Math.max(activeNanos() / 1_000_000_000.0, 0.001);
+
         RunView.Summary summary = new RunView.Summary(
                 totalCount,
                 totalErrors,
@@ -189,6 +219,7 @@ public class LoadTestRun {
                 all.length == 0 ? 0 : all[all.length - 1]);
 
         return new RunView(id, status, error, spec, startedAtMillis, elapsedSeconds(),
-                summary, timeline, List.copyOf(serverMetrics), slowQueries());
+                summary, timeline, List.copyOf(serverMetrics), slowQueries(),
+                stepSummaries(activeSeconds));
     }
 }

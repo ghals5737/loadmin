@@ -20,6 +20,13 @@ public interface ScriptExporter {
     /** The script itself. */
     String render(ExportRequest request);
 
+    /** A file name stem for a whole run: its single target, or "scenario". */
+    static String stem(ExportRequest request) {
+        return request.spec().singleStep()
+                ? slug(request.spec().steps().get(0).pathPattern())
+                : "scenario";
+    }
+
     /**
      * A file name stem derived from the target, e.g. {@code api-users-id} for
      * {@code /api/users/{id}}.

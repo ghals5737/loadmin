@@ -7,7 +7,7 @@ plugins {
 
 allprojects {
     group = "io.github.ghals5737"
-    version = "0.1.0"
+    version = "0.2.0"
 }
 
 /** Published to Maven Central; loadmin-demo is a local sample and stays out. */

@@ -8,6 +8,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -94,7 +95,7 @@ public class LoadTestEngine {
 
     public LoadTestRun start(LoadTestSpec spec) {
         validate(spec);
-        CompiledRequest request = compile(spec);
+        List<CompiledStep> request = compile(spec);
         LoadTestRun run = new LoadTestRun(UUID.randomUUID().toString().substring(0, 8), spec);
         registry.add(run);
         Thread controller = new Thread(() -> execute(run, request), "loadmin-run-" + run.id());
@@ -112,26 +113,33 @@ public class LoadTestEngine {
             throw new IllegalArgumentException(
                     "durationSeconds must be between 1 and " + maxDurationSeconds);
         }
-        HttpMethod.valueOf(spec.httpMethod());
+        if (spec.steps().isEmpty()) {
+            throw new IllegalArgumentException("a run needs at least one step");
+        }
+        spec.steps().forEach(step -> HttpMethod.valueOf(step.httpMethod()));
     }
 
     /**
      * Parses the request templates up front, so a malformed one fails the start
      * call (surfacing as a 400) instead of the run itself.
      */
-    private CompiledRequest compile(LoadTestSpec spec) {
-        ValueTemplate path = ValueTemplate.compile(spec.pathTemplate(), ValueTemplate.Mode.PATH);
-        ValueTemplate body = spec.bodyTemplate() == null || spec.bodyTemplate().isBlank()
-                ? null
-                : ValueTemplate.compile(spec.bodyTemplate(), ValueTemplate.Mode.BODY);
-        return new CompiledRequest(path, body);
+    private List<CompiledStep> compile(LoadTestSpec spec) {
+        List<CompiledStep> compiled = new ArrayList<>(spec.steps().size());
+        for (LoadTestSpec.Step step : spec.steps()) {
+            ValueTemplate path = ValueTemplate.compile(step.pathTemplate(), ValueTemplate.Mode.PATH);
+            ValueTemplate body = step.bodyTemplate() == null || step.bodyTemplate().isBlank()
+                    ? null
+                    : ValueTemplate.compile(step.bodyTemplate(), ValueTemplate.Mode.BODY);
+            compiled.add(new CompiledStep(HttpMethod.valueOf(step.httpMethod()), path, body));
+        }
+        return List.copyOf(compiled);
     }
 
-    /** A spec's templates, parsed once and shared by every virtual user. */
-    private record CompiledRequest(ValueTemplate path, ValueTemplate body) {
+    /** A step's templates, parsed once and shared by every virtual user. */
+    private record CompiledStep(HttpMethod method, ValueTemplate path, ValueTemplate body) {
     }
 
-    private void execute(LoadTestRun run, CompiledRequest request) {
+    private void execute(LoadTestRun run, List<CompiledStep> steps) {
         LoadTestSpec spec = run.spec();
         notifyListeners(listener -> listener.started(run), run);
         String name = "loadmin-" + run.id();
@@ -163,7 +171,7 @@ public class LoadTestEngine {
             for (int i = 0; i < spec.concurrency(); i++) {
                 workers.execute(() -> {
                     try {
-                        runVirtualUser(run, client, deadline, request);
+                        runVirtualUser(run, client, deadline, steps);
                     } finally {
                         done.countDown();
                     }
@@ -194,28 +202,39 @@ public class LoadTestEngine {
         }
     }
 
+    /**
+     * One virtual user: walk the scenario from the first step to the last, then
+     * start over, until the run is done. Steps are timed separately so a slow
+     * one cannot hide behind the others, and a failing step does not skip the
+     * rest of the scenario — a login that 500s should still show what the
+     * following calls do.
+     */
     private void runVirtualUser(LoadTestRun run, WebClient client, long deadline,
-            CompiledRequest compiled) {
-        HttpMethod method = HttpMethod.valueOf(run.spec().httpMethod());
-
+            List<CompiledStep> steps) {
         while (System.nanoTime() < deadline && !run.stopRequested()) {
-            long started = System.nanoTime();
-            boolean error;
-            try {
-                WebClient.RequestBodySpec bodySpec = client.method(method)
-                        .uri(compiled.path().render());
-                WebClient.RequestHeadersSpec<?> request = compiled.body() == null
-                        ? bodySpec
-                        : bodySpec.contentType(MediaType.APPLICATION_JSON)
-                                .bodyValue(compiled.body().render());
-                HttpStatusCode status = request
-                        .exchangeToMono(response -> response.releaseBody().thenReturn(response.statusCode()))
-                        .block(REQUEST_TIMEOUT.plusSeconds(1));
-                error = status == null || status.isError();
-            } catch (Exception e) {
-                error = true;
+            for (int index = 0; index < steps.size(); index++) {
+                if (System.nanoTime() >= deadline || run.stopRequested()) {
+                    return;
+                }
+                CompiledStep step = steps.get(index);
+                long started = System.nanoTime();
+                boolean error;
+                try {
+                    WebClient.RequestBodySpec bodySpec = client.method(step.method())
+                            .uri(step.path().render());
+                    WebClient.RequestHeadersSpec<?> request = step.body() == null
+                            ? bodySpec
+                            : bodySpec.contentType(MediaType.APPLICATION_JSON)
+                                    .bodyValue(step.body().render());
+                    HttpStatusCode status = request
+                            .exchangeToMono(response -> response.releaseBody().thenReturn(response.statusCode()))
+                            .block(REQUEST_TIMEOUT.plusSeconds(1));
+                    error = status == null || status.isError();
+                } catch (Exception e) {
+                    error = true;
+                }
+                run.record(index, (System.nanoTime() - started) / 1_000_000, error);
             }
-            run.record((System.nanoTime() - started) / 1_000_000, error);
         }
     }
 

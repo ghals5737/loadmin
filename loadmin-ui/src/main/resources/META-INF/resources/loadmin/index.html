@@ -113,6 +113,22 @@
   .samples div { padding: 1px 0; overflow-wrap: anywhere; }
   .samples.invalid { color: var(--status-critical); }
 
+  .add-step { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+  .add-step select {
+    font: inherit; padding: 6px 8px; border-radius: 6px;
+    border: 1px solid var(--baseline); background: var(--page); color: var(--ink);
+    max-width: 320px;
+  }
+  .step {
+    border: 1px solid var(--grid); border-radius: 8px; padding: 12px 14px; margin-bottom: 10px;
+  }
+  .step-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .step-index {
+    width: 20px; height: 20px; border-radius: 50%; background: var(--grid); color: var(--ink-2);
+    font-size: 11px; display: inline-flex; align-items: center; justify-content: center;
+  }
+  .step-name { color: var(--muted); font-size: 12px; }
+
   /* history */
   .history-actions {
     display: flex; align-items: center; gap: 10px;
@@ -148,6 +164,10 @@
 
   /* run view */
   .run-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  /* A scenario label can be long; it gives way before the buttons do. */
+  .run-head .run-target:first-of-type {
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+  }
   .pill {
     padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; color: #fff;
   }
@@ -243,21 +263,15 @@
   <section id="configSection" class="hidden">
     <h2>New load test</h2>
     <div class="card">
-      <div class="config-target">
-        <span class="method" id="cfgMethod"></span>
-        <span class="path" id="cfgPattern"></span>
+      <div id="cfgSteps"></div>
+      <div class="add-step">
+        <select id="cfgAddStep"></select>
+        <button id="cfgAddStepBtn" type="button">Add step</button>
+        <span class="hint-inline">Steps run in order, once per iteration of every virtual user.</span>
+        <span style="flex:1"></span>
         <button class="linklike" id="cfgBack" type="button">← back to endpoints</button>
       </div>
-      <div class="form-grid">
-        <div class="field">
-          <label for="cfgPath">Request path (fill in any {variables})</label>
-          <input id="cfgPath" type="text" spellcheck="false">
-          <div class="samples" id="cfgPathSamples"></div>
-          <div class="hint">Rendered per request:
-            <code>${int(1,20)}</code> <code>${seq}</code> <code>${uuid}</code>
-            <code>${alpha(8)}</code> <code>${pick(a|b)}</code> <code>${now}</code>
-          </div>
-        </div>
+      <div class="form-grid" style="grid-template-columns: 140px 140px 1fr; margin-top: 14px">
         <div class="field">
           <label for="cfgConcurrency">Concurrent users</label>
           <input id="cfgConcurrency" type="number" min="1" value="10">
@@ -266,10 +280,11 @@
           <label for="cfgDuration">Duration (seconds)</label>
           <input id="cfgDuration" type="number" min="1" value="15">
         </div>
-        <div class="field field-body hidden" id="cfgBodyField">
-          <label for="cfgBody">JSON body</label>
-          <textarea id="cfgBody" rows="4">{}</textarea>
-          <div class="samples" id="cfgBodySamples"></div>
+        <div class="field">
+          <div class="hint" style="margin-top: 22px">Rendered per request:
+            <code>${int(1,20)}</code> <code>${seq}</code> <code>${uuid}</code>
+            <code>${alpha(8)}</code> <code>${pick(a|b)}</code> <code>${now}</code>
+          </div>
         </div>
       </div>
       <div class="form-actions">
@@ -279,7 +294,7 @@
         <span class="form-error" id="cfgError"></span>
       </div>
       <div class="hint" style="margin-top:8px">
-        Exported scripts run the same request from another process, so the load
+        Exported scripts run the same steps from another process, so the load
         stops competing with the application for CPU, threads and GC — keep this
         page open while they run to watch the server side.
       </div>
@@ -297,6 +312,7 @@
     </div>
     <div class="cards" id="summaryCards"></div>
     <div class="baseline hidden" id="runBaseline"></div>
+    <div id="stepResults"></div>
     <div id="slowQueries"></div>
     <div id="charts"></div>
     <details class="data-table card">
@@ -482,12 +498,14 @@ function attachHover(host, cfg, X, xMax) {
 
 /* ---------- endpoint list ---------- */
 
-var selectedEndpoint = null;
+/** Kept so a scenario can add any of them as a further step. */
+var allEndpoints = [];
 
 function loadEndpoints() {
   fetch('api/endpoints')
     .then(function (res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
     .then(function (endpoints) {
+      allEndpoints = endpoints;
       var tbody = $('endpoints');
       tbody.innerHTML = '';
       if (!endpoints.length) {
@@ -524,66 +542,166 @@ function showHome() {
   loadHistory();
 }
 
+/* ---------- scenario builder ----------
+   A test against one endpoint is a scenario with a single step, so there is one
+   shape here and one shape on the server. */
+
+var scenario = [];
+
 function openConfig(ep) {
-  selectedEndpoint = ep;
+  scenario = [newStep(ep)];
   $('endpointsSection').classList.add('hidden');
   $('historySection').classList.add('hidden');
   $('runSection').classList.add('hidden');
   $('compareSection').classList.add('hidden');
   $('configSection').classList.remove('hidden');
-  $('cfgMethod').className = 'method method-' + ep.httpMethod;
-  $('cfgMethod').textContent = ep.httpMethod;
-  $('cfgPattern').textContent = ep.path;
-  $('cfgPath').value = ep.pathTemplate || ep.path;
   $('cfgError').textContent = '';
-  var hasBody = ['POST', 'PUT', 'PATCH'].indexOf(ep.httpMethod) >= 0;
-  $('cfgBodyField').classList.toggle('hidden', !hasBody);
-  if (hasBody) {
-    $('cfgBody').value = ep.bodyTemplate || '{}';
-  }
-  showSamples('cfgPathSamples', [], false);
-  showSamples('cfgBodySamples', [], false);
-  runPreview();
+  fillAddStepOptions();
+  renderSteps();
 }
+
+function newStep(ep) {
+  var hasBody = ['POST', 'PUT', 'PATCH'].indexOf(ep.httpMethod) >= 0;
+  return {
+    endpoint: ep,
+    path: ep.pathTemplate || ep.path,
+    body: hasBody ? (ep.bodyTemplate || '{}') : null
+  };
+}
+
+function fillAddStepOptions() {
+  var select = $('cfgAddStep');
+  select.innerHTML = '';
+  allEndpoints.forEach(function (ep, i) {
+    var option = document.createElement('option');
+    option.value = String(i);
+    option.textContent = ep.httpMethod + ' ' + ep.path;
+    select.appendChild(option);
+  });
+  select.disabled = !allEndpoints.length;
+  $('cfgAddStepBtn').disabled = !allEndpoints.length;
+}
+
+$('cfgAddStepBtn').addEventListener('click', function () {
+  var ep = allEndpoints[parseInt($('cfgAddStep').value, 10)];
+  if (!ep) { return; }
+  scenario.push(newStep(ep));
+  renderSteps();
+});
+
+function renderSteps() {
+  var host = $('cfgSteps');
+  host.innerHTML = '';
+  scenario.forEach(function (step, index) {
+    var ep = step.endpoint;
+    var card = document.createElement('div');
+    card.className = 'step';
+    card.innerHTML =
+      '<div class="step-head">' +
+        (scenario.length > 1 ? '<span class="step-index">' + (index + 1) + '</span>' : '') +
+        '<span class="method method-' + esc(ep.httpMethod) + '">' + esc(ep.httpMethod) + '</span>' +
+        '<span class="path">' + esc(ep.path) + '</span>' +
+        '<span class="step-name">' + esc(ep.handler) + '</span>' +
+        '<span style="flex:1"></span>' +
+        (scenario.length > 1 ? '<button class="linklike" type="button" data-remove="1">remove</button>' : '') +
+      '</div>' +
+      '<div class="field">' +
+        '<label>Request path (fill in any {variables})</label>' +
+        '<input type="text" spellcheck="false" data-path="1">' +
+        '<div class="samples" data-path-samples="1"></div>' +
+      '</div>' +
+      (step.body === null ? '' :
+        '<div class="field" style="margin-top:10px">' +
+          '<label>JSON body</label>' +
+          '<textarea rows="3" data-body="1"></textarea>' +
+          '<div class="samples" data-body-samples="1"></div>' +
+        '</div>');
+
+    var pathInput = card.querySelector('[data-path]');
+    pathInput.value = step.path;
+    pathInput.addEventListener('input', function () {
+      step.path = pathInput.value;
+      schedulePreview(index);
+    });
+    var bodyInput = card.querySelector('[data-body]');
+    if (bodyInput) {
+      bodyInput.value = step.body;
+      bodyInput.addEventListener('input', function () {
+        step.body = bodyInput.value;
+        schedulePreview(index);
+      });
+    }
+    var remove = card.querySelector('[data-remove]');
+    if (remove) {
+      remove.addEventListener('click', function () {
+        scenario.splice(index, 1);
+        renderSteps();
+      });
+    }
+    host.appendChild(card);
+    runPreview(index);
+  });
+}
+
+function stepPayload() {
+  return scenario.map(function (step) {
+    return {
+      name: null,
+      httpMethod: step.endpoint.httpMethod,
+      pathPattern: step.endpoint.path,
+      path: (step.path || '').trim(),
+      body: step.body
+    };
+  });
+}
+
+$('cfgBack').addEventListener('click', function () {
+  $('configSection').classList.add('hidden');
+  showHome();
+});
 
 /* ---------- template preview ---------- */
 
-var previewTimer = null;
-var previewToken = 0;
+var previewTimers = {};
+var previewTokens = {};
 
-function schedulePreview() {
-  if (previewTimer) { clearTimeout(previewTimer); }
-  previewTimer = setTimeout(runPreview, 300);
+function schedulePreview(index) {
+  if (previewTimers[index]) { clearTimeout(previewTimers[index]); }
+  previewTimers[index] = setTimeout(function () { runPreview(index); }, 300);
 }
 
 /* Samples come from the server: the generators live in Java, so the preview is
    produced by exactly the code the run will use. */
-function runPreview() {
-  var ep = selectedEndpoint;
-  if (!ep) { return; }
-  var hasBody = !$('cfgBodyField').classList.contains('hidden');
-  var path = $('cfgPath').value.trim();
-  var body = hasBody ? $('cfgBody').value : null;
-  var token = ++previewToken;
+function runPreview(index) {
+  var step = scenario[index];
+  var card = $('cfgSteps').children[index];
+  if (!step || !card) { return; }
+  var token = (previewTokens[index] || 0) + 1;
+  previewTokens[index] = token;
   fetch('api/templates/preview', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      httpMethod: ep.httpMethod, pathPattern: ep.path, path: path, body: body
+      httpMethod: step.endpoint.httpMethod,
+      pathPattern: step.endpoint.path,
+      path: (step.path || '').trim(),
+      body: step.body
     })
   })
     .then(function (res) {
       return res.json().then(function (data) { return { ok: res.ok, data: data }; });
     })
     .then(function (result) {
-      if (token !== previewToken) { return; }
+      if (previewTokens[index] !== token) { return; }
+      var pathBox = card.querySelector('[data-path-samples]');
+      var bodyBox = card.querySelector('[data-body-samples]');
       if (!result.ok) {
-        showSamples('cfgPathSamples', [result.data.error || 'invalid template'], true);
-        showSamples('cfgBodySamples', [], false);
+        showSamplesIn(pathBox, [result.data.error || 'invalid template'], true);
+        showSamplesIn(bodyBox, [], false);
         return;
       }
-      showSamples('cfgPathSamples', varying(path, result.data.paths), false);
-      showSamples('cfgBodySamples', varying(body, result.data.bodies), false);
+      showSamplesIn(pathBox, varying(step.path, result.data.paths), false);
+      showSamplesIn(bodyBox, varying(step.body, result.data.bodies), false);
     })
     .catch(function () { /* preview is best effort; Start reports real errors */ });
 }
@@ -594,8 +712,8 @@ function varying(input, samples) {
   return samples;
 }
 
-function showSamples(id, values, invalid) {
-  var box = $(id);
+function showSamplesIn(box, values, invalid) {
+  if (!box) { return; }
   box.classList.toggle('invalid', invalid);
   box.innerHTML = '';
   values.forEach(function (value) {
@@ -605,27 +723,14 @@ function showSamples(id, values, invalid) {
   });
 }
 
-$('cfgPath').addEventListener('input', schedulePreview);
-$('cfgBody').addEventListener('input', schedulePreview);
-
-$('cfgBack').addEventListener('click', function () {
-  $('configSection').classList.add('hidden');
-  showHome();
-});
-
 $('cfgStart').addEventListener('click', function () {
-  var ep = selectedEndpoint;
-  var hasBody = !$('cfgBodyField').classList.contains('hidden');
   $('cfgError').textContent = '';
   $('cfgStart').disabled = true;
   fetch('api/runs', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      httpMethod: ep.httpMethod,
-      pathPattern: ep.path,
-      path: $('cfgPath').value.trim(),
-      body: hasBody ? $('cfgBody').value : null,
+      steps: stepPayload(),
       concurrency: parseInt($('cfgConcurrency').value, 10),
       durationSeconds: parseInt($('cfgDuration').value, 10)
     })
@@ -646,18 +751,13 @@ $('cfgStart').addEventListener('click', function () {
    hands the same target, templates and load settings to a runner outside it. */
 
 function exportScript(format) {
-  var ep = selectedEndpoint;
-  if (!ep) { return; }
-  var hasBody = !$('cfgBodyField').classList.contains('hidden');
+  if (!scenario.length) { return; }
   $('cfgError').textContent = '';
   fetch('api/export/' + format, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      httpMethod: ep.httpMethod,
-      pathPattern: ep.path,
-      path: $('cfgPath').value.trim(),
-      body: hasBody ? $('cfgBody').value : null,
+      steps: stepPayload(),
       concurrency: parseInt($('cfgConcurrency').value, 10),
       durationSeconds: parseInt($('cfgDuration').value, 10)
     })
@@ -761,8 +861,10 @@ $('runStop').addEventListener('click', function () {
 $('runBack').addEventListener('click', function () {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   $('runSection').classList.add('hidden');
-  if (runOrigin === 'config' && selectedEndpoint) {
-    openConfig(selectedEndpoint);
+  if (runOrigin === 'config' && scenario.length) {
+    $('configSection').classList.remove('hidden');
+    $('endpointsSection').classList.add('hidden');
+    $('historySection').classList.add('hidden');
   } else {
     showHome();
   }
@@ -820,8 +922,7 @@ function renderRun(view) {
   var s = view.summary;
   $('runStatus').className = 'pill pill-' + view.status;
   $('runStatus').textContent = view.status + (view.error ? ' — ' + view.error : '');
-  $('runTarget').textContent = view.spec.httpMethod + ' ' + view.spec.pathTemplate +
-    ' · ' + view.spec.concurrency + ' users';
+  $('runTarget').textContent = specLabel(view.spec) + ' · ' + view.spec.concurrency + ' users';
   $('runElapsed').textContent = view.elapsedSeconds + 's / ' + view.spec.durationSeconds + 's';
 
   $('summaryCards').innerHTML = [
@@ -836,9 +937,54 @@ function renderRun(view) {
       '<div class="value">' + c[1] + (c[2] ? ' <span class="unit">' + c[2] + '</span>' : '') + '</div></div>';
   }).join('');
 
+  renderStepResults(view);
   renderCharts(view);
   renderSlowQueries(view);
   renderDataTable(view);
+}
+
+/* Two runs are the same test when they walked the same endpoints in the same
+   order; the path templates may differ. */
+function targetKey(spec) {
+  return (spec.steps || []).map(function (s) {
+    return s.httpMethod + ' ' + s.pathPattern;
+  }).join(' > ');
+}
+
+function specLabel(spec) {
+  var steps = spec.steps || [];
+  if (steps.length === 1) {
+    return steps[0].httpMethod + ' ' + steps[0].pathTemplate;
+  }
+  return steps.length + ' steps: ' + steps.map(function (s) { return s.name; }).join(' \u2192 ');
+}
+
+/* A scenario's overall numbers hide which call is the slow one, so each step
+   gets its own row. For a single-step run this adds nothing over the cards. */
+function renderStepResults(view) {
+  var steps = view.steps || [];
+  var host = $('stepResults');
+  if (steps.length < 2) {
+    host.innerHTML = '';
+    return;
+  }
+  var rows = steps.map(function (step, i) {
+    var s = step.summary;
+    return '<tr><td><span class="step-index">' + (i + 1) + '</span></td>' +
+      '<td class="path">' + esc(step.name) + '</td>' +
+      '<td class="num">' + fmt(s.requests) + '</td>' +
+      '<td class="num">' + fmt(s.errorRate * 100, 2) + '%</td>' +
+      '<td class="num">' + fmt(s.p50) + ' ms</td>' +
+      '<td class="num">' + fmt(s.p95) + ' ms</td>' +
+      '<td class="num">' + fmt(s.p99) + ' ms</td></tr>';
+  }).join('');
+  host.innerHTML = '<div class="card slow-queries"><h3>Per step</h3>' +
+    '<div class="sub">Every virtual user walks these in order. A failing step does not skip ' +
+    'the rest, so the later ones still show what they do under that condition.</div>' +
+    '<div class="table-scroll"><table class="list"><thead><tr>' +
+    '<th></th><th>Step</th><th class="num">requests</th><th class="num">errors</th>' +
+    '<th class="num">p50</th><th class="num">p95</th><th class="num">p99</th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
 }
 
 /* Only shown when something was actually caught: the capture is opt-in
@@ -1028,7 +1174,7 @@ function renderHistory(entries) {
     tr.innerHTML =
       '<td class="pick"><input type="checkbox" aria-label="select run"></td>' +
       '<td class="when">' + esc(ago(e.startedAtMillis)) + '</td>' +
-      '<td class="path">' + esc(e.spec.httpMethod) + ' ' + esc(e.spec.pathTemplate) + '</td>' +
+      '<td class="path">' + esc(specLabel(e.spec)) + '</td>' +
       '<td class="handler load">' + esc(e.spec.concurrency) + ' users · ' + esc(e.spec.durationSeconds) + 's</td>' +
       '<td class="num">' + fmt(s.rps, 1) + '</td>' +
       '<td class="num">' + fmt(s.p95) + ' ms</td>' +
@@ -1055,12 +1201,11 @@ function toggleSelection(entry, box, entries) {
 function updateCompareButton(entries) {
   var two = historySelection.length === 2;
   var sameTarget = two &&
-    historySelection[0].spec.httpMethod === historySelection[1].spec.httpMethod &&
-    historySelection[0].spec.pathPattern === historySelection[1].spec.pathPattern;
+    targetKey(historySelection[0].spec) === targetKey(historySelection[1].spec);
   $('historyCompare').disabled = !sameTarget;
   $('historyHint').textContent = !two
     ? 'Tick two runs of the same endpoint to compare them.'
-    : (sameTarget ? '' : 'Those two runs hit different endpoints.');
+    : (sameTarget ? '' : 'Those two runs walked different endpoints.');
 }
 
 $('historyCompare').addEventListener('click', function () {
@@ -1080,7 +1225,7 @@ function renderCompare(before, after) {
   $('historySection').classList.add('hidden');
   $('compareSection').classList.remove('hidden');
   setHash('compare/' + before.id + ',' + after.id);
-  $('compareTitle').textContent = before.spec.httpMethod + ' ' + before.spec.pathPattern;
+  $('compareTitle').textContent = targetKey(before.spec);
 
   var rows = [
     ['Throughput', 'rps', 1, 'req/s', false],

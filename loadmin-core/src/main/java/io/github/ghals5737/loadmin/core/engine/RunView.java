@@ -20,7 +20,8 @@ public record RunView(
         Summary summary,
         List<TimelinePoint> timeline,
         List<ServerMetricsSample> serverMetrics,
-        List<SlowQuery> slowQueries) {
+        List<SlowQuery> slowQueries,
+        List<StepSummary> steps) {
 
     public record Summary(
             long requests,
@@ -31,6 +32,16 @@ public record RunView(
             long p95,
             long p99,
             long max) {
+    }
+
+    /**
+     * How one step of a scenario did over the whole run. A single-endpoint run
+     * has one of these, matching the overall summary.
+     *
+     * @param index position in the scenario, from 0
+     * @param name  the step's label
+     */
+    public record StepSummary(int index, String name, Summary summary) {
     }
 
     /**

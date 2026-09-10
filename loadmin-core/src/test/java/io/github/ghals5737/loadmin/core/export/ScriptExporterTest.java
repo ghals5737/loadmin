@@ -5,6 +5,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.List;
+
+import io.github.ghals5737.loadmin.core.engine.LoadTestSpec;
+
 import org.junit.jupiter.api.Test;
 
 class ScriptExporterTest {
@@ -13,7 +17,12 @@ class ScriptExporterTest {
     private final GatlingScriptExporter gatling = new GatlingScriptExporter();
 
     private static ExportRequest request(String method, String pattern, String path, String body) {
-        return new ExportRequest("http://localhost:8080", method, pattern, path, body, 20, 8);
+        return new ExportRequest("http://localhost:8080",
+                LoadTestSpec.single(method, pattern, path, body, 20, 8));
+    }
+
+    private static ExportRequest scenario(LoadTestSpec.Step... steps) {
+        return new ExportRequest("http://localhost:8080", new LoadTestSpec(List.of(steps), 20, 8));
     }
 
     @Test
@@ -122,12 +131,39 @@ class ScriptExporterTest {
     }
 
     @Test
+    void k6WrapsEachScenarioStepInItsOwnGroup() {
+        String script = k6.render(scenario(
+                new LoadTestSpec.Step("sign in", "POST", "/api/login", "/api/login", "{}"),
+                new LoadTestSpec.Step(null, "GET", "/api/users/{id}", "/api/users/${int(1,20)}", null)));
+
+        assertTrue(script.contains("import { check, group } from 'k6';"), script);
+        assertTrue(script.contains("group('sign in', () => {"), script);
+        assertTrue(script.contains("group('GET /api/users/{id}', () => {"), script);
+        // Both requests live in one iteration, in order.
+        assertTrue(script.indexOf("sign in") < script.indexOf("/api/users/"), script);
+    }
+
+    @Test
+    void gatlingChainsScenarioSteps() {
+        String script = gatling.render(scenario(
+                new LoadTestSpec.Step("sign in", "POST", "/api/login", "/api/login", "{}"),
+                new LoadTestSpec.Step(null, "GET", "/api/hello", "/api/hello", null)));
+
+        assertTrue(script.contains(".exec(http(\"sign in\")"), script);
+        assertTrue(script.contains(".exec(http(\"GET /api/hello\")"), script);
+        assertTrue(script.indexOf("sign in") < script.indexOf("GET /api/hello"), script);
+    }
+
+    @Test
     void fileNamesComeFromTheTarget() {
         ExportRequest request = request("GET", "/api/users/{id}", "/api/users/1", null);
 
         assertEquals("loadmin-api-users-id.js", k6.fileName(request));
         assertEquals("LoadminSimulation.java", gatling.fileName(request));
         assertEquals("root", ScriptExporter.slug("/"));
+        assertEquals("loadmin-scenario.js", k6.fileName(scenario(
+                new LoadTestSpec.Step(null, "GET", "/a", "/a", null),
+                new LoadTestSpec.Step(null, "GET", "/b", "/b", null))));
     }
 
     @Test

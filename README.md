@@ -30,6 +30,10 @@ implementation("io.github.ghals5737:loadmin-spring-boot-starter:0.1.0")
 </dependency>
 ```
 
+> Scenarios, slow query capture and load-aware comparison are on `main` and will
+> ship in 0.2.0. That release changes the stored run format, so history written
+> by 0.1.0 is skipped rather than read.
+
 ## Quick start
 
 ```java
@@ -113,6 +117,19 @@ One thing changes on the way out: k6 gives every virtual user its own JS
 runtime, so `${seq}` becomes a per-user counter (each starting far enough apart
 to stay distinct). The generated script says so. Gatling runs in one JVM and
 keeps a single shared sequence.
+
+### Scenarios
+
+Real traffic is a flow, not one endpoint. Add steps on the config screen and
+every virtual user walks them in order, over and over, for the duration of the
+run — and each step is measured on its own, because an overall p95 hides which
+call is the slow one:
+
+![per-step results of a three-step scenario](docs/screenshot-scenario.png)
+
+A failing step does not skip the rest: if the login 500s, the calls after it
+still run, which is usually the thing you wanted to see. Exported k6 scripts
+wrap each step in a `group`, and Gatling simulations chain them with `.exec`.
 
 ### Slow queries
 

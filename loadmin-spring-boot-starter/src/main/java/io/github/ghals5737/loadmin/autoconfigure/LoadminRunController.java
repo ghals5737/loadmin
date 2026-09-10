@@ -22,8 +22,8 @@ import org.springframework.web.bind.annotation.RestController;
  * Backend API for starting, watching and stopping load test runs, and for
  * previewing what a request template renders to.
  *
- * <p>Only endpoints discovered from {@code @LoadTest} can be targeted; see
- * {@link TargetValidator}.
+ * <p>Only endpoints discovered from {@code @LoadTest} can be targeted, and
+ * every step of a scenario is checked; see {@link TargetValidator}.
  */
 @RestController
 public class LoadminRunController {
@@ -41,23 +41,31 @@ public class LoadminRunController {
         this.targets = targets;
     }
 
-    public record StartRunRequest(String httpMethod, String pathPattern, String path,
-            String body, Integer concurrency, Integer durationSeconds) {
+    /** One request of a scenario, as the UI sends it. */
+    public record StepRequest(String name, String httpMethod, String pathPattern,
+            String path, String body) {
+    }
+
+    /**
+     * Either a scenario ({@code steps}) or a single target given by the flat
+     * fields, which is the same thing with one step.
+     */
+    public record StartRunRequest(List<StepRequest> steps, String httpMethod, String pathPattern,
+            String path, String body, Integer concurrency, Integer durationSeconds) {
     }
 
     @PostMapping("/loadmin/api/runs")
     public ResponseEntity<?> start(@RequestBody StartRunRequest request) {
-        if (request.httpMethod() == null || request.pathPattern() == null || request.path() == null) {
-            return badRequest("httpMethod, pathPattern and path are required");
+        List<StepRequest> steps = stepsOf(request);
+        if (steps.isEmpty()) {
+            return badRequest("a run needs at least one step");
         }
-        String method = request.httpMethod().toUpperCase();
         try {
-            targets.check(method, request.pathPattern(), request.path());
-            LoadTestSpec spec = new LoadTestSpec(
-                    method,
-                    request.pathPattern(),
-                    request.path(),
-                    request.body(),
+            List<LoadTestSpec.Step> checked = new ArrayList<>(steps.size());
+            for (StepRequest step : steps) {
+                checked.add(check(step));
+            }
+            LoadTestSpec spec = new LoadTestSpec(checked,
                     request.concurrency() == null ? 10 : request.concurrency(),
                     request.durationSeconds() == null ? 15 : request.durationSeconds());
             LoadTestRun run = engine.start(spec);
@@ -115,9 +123,30 @@ public class LoadminRunController {
                 .<Map<String, Object>>map(run -> Map.of(
                         "id", run.id(),
                         "status", run.status().name(),
-                        "target", run.spec().httpMethod() + " " + run.spec().pathTemplate(),
+                        "target", run.spec().label(),
                         "startedAtMillis", run.startedAtMillis()))
                 .toList();
+    }
+
+    /** Accepts a scenario, or the flat single-target form as one step. */
+    static List<StepRequest> stepsOf(StartRunRequest request) {
+        if (request.steps() != null && !request.steps().isEmpty()) {
+            return request.steps();
+        }
+        if (request.httpMethod() == null || request.pathPattern() == null || request.path() == null) {
+            return List.of();
+        }
+        return List.of(new StepRequest(null, request.httpMethod(), request.pathPattern(),
+                request.path(), request.body()));
+    }
+
+    private LoadTestSpec.Step check(StepRequest step) {
+        if (step.httpMethod() == null || step.pathPattern() == null || step.path() == null) {
+            throw new IllegalArgumentException("every step needs httpMethod, pathPattern and path");
+        }
+        String method = step.httpMethod().toUpperCase();
+        targets.check(method, step.pathPattern(), step.path());
+        return new LoadTestSpec.Step(step.name(), method, step.pathPattern(), step.path(), step.body());
     }
 
     private static List<String> renderSamples(ValueTemplate template) {

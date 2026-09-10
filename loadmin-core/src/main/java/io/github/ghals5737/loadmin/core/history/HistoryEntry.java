@@ -23,13 +23,13 @@ public record HistoryEntry(String id, long startedAtMillis, RunStatus status,
     }
 
     /**
-     * Whether this run hit the same endpoint as {@code other}. The path
-     * template may differ (a wider {@code ${int(...)}} range is still the same
-     * endpoint); the mapping pattern and method are what must match.
+     * Whether this run walked the same endpoints in the same order as
+     * {@code other}. Path templates may differ (a wider {@code ${int(...)}}
+     * range is still the same endpoint); the methods and mapping patterns are
+     * what must match.
      */
     public boolean sameTarget(LoadTestSpec other) {
-        return spec.httpMethod().equals(other.httpMethod())
-                && spec.pathPattern().equals(other.pathPattern());
+        return spec.targetKey().equals(other.targetKey());
     }
 
     /**

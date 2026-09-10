@@ -18,7 +18,7 @@ class SlowQueryAggregationTest {
 
     private static LoadTestRun newRun() {
         return new LoadTestRun("test",
-                new LoadTestSpec("GET", "/api/x", "/api/x", null, 10, 15));
+                LoadTestSpec.single("GET", "/api/x", "/api/x", null, 10, 15));
     }
 
     @Test

@@ -1,10 +1,12 @@
 package io.github.ghals5737.loadmin.autoconfigure;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
+import io.github.ghals5737.loadmin.core.engine.LoadTestSpec;
 import io.github.ghals5737.loadmin.core.export.ExportRequest;
 import io.github.ghals5737.loadmin.core.export.ScriptExporter;
 
@@ -38,8 +40,10 @@ public class LoadminExportController {
         this.baseUrl = baseUrl;
     }
 
-    public record ExportScriptRequest(String httpMethod, String pathPattern, String path,
-            String body, Integer concurrency, Integer durationSeconds) {
+    /** Same shape as starting a run: a scenario, or one target given flat. */
+    public record ExportScriptRequest(List<LoadminRunController.StepRequest> steps,
+            String httpMethod, String pathPattern, String path, String body,
+            Integer concurrency, Integer durationSeconds) {
     }
 
     /** The formats this build can produce, for the UI to offer. */
@@ -56,22 +60,30 @@ public class LoadminExportController {
             return ResponseEntity.badRequest().body(Map.of(
                     "error", "unknown export format: " + format + "; supported: " + exporters.keySet()));
         }
-        if (request.httpMethod() == null || request.pathPattern() == null || request.path() == null) {
+        List<LoadminRunController.StepRequest> steps = LoadminRunController.stepsOf(
+                new LoadminRunController.StartRunRequest(request.steps(), request.httpMethod(),
+                        request.pathPattern(), request.path(), request.body(),
+                        request.concurrency(), request.durationSeconds()));
+        if (steps.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of(
                     "error", "httpMethod, pathPattern and path are required"));
         }
-        String method = request.httpMethod().toUpperCase();
         try {
-            // Same guard as starting a run: export is not a way around it.
-            targets.check(method, request.pathPattern(), request.path());
-            ExportRequest exportRequest = new ExportRequest(
-                    baseUrl.get(),
-                    method,
-                    request.pathPattern(),
-                    request.path(),
-                    request.body(),
+            List<LoadTestSpec.Step> checked = new ArrayList<>(steps.size());
+            for (LoadminRunController.StepRequest step : steps) {
+                if (step.httpMethod() == null || step.pathPattern() == null || step.path() == null) {
+                    throw new IllegalArgumentException(
+                            "every step needs httpMethod, pathPattern and path");
+                }
+                String method = step.httpMethod().toUpperCase();
+                // Same guard as starting a run: export is not a way around it.
+                targets.check(method, step.pathPattern(), step.path());
+                checked.add(new LoadTestSpec.Step(step.name(), method, step.pathPattern(),
+                        step.path(), step.body()));
+            }
+            ExportRequest exportRequest = new ExportRequest(baseUrl.get(), new LoadTestSpec(checked,
                     request.concurrency() == null ? 10 : request.concurrency(),
-                    request.durationSeconds() == null ? 15 : request.durationSeconds());
+                    request.durationSeconds() == null ? 15 : request.durationSeconds()));
             return ResponseEntity.ok()
                     .contentType(MediaType.TEXT_PLAIN)
                     .header(HttpHeaders.CONTENT_DISPOSITION,

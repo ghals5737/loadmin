@@ -54,7 +54,7 @@ class RunHistoryStoreTest {
         HistoryEntry entry = store.list().get(0);
 
         assertEquals(42, entry.summary().p95());
-        assertEquals("/api/hello", entry.spec().pathPattern());
+        assertEquals("/api/hello", entry.spec().steps().get(0).pathPattern());
         assertEquals(RunStatus.COMPLETED, entry.status());
     }
 
@@ -90,10 +90,10 @@ class RunHistoryStoreTest {
     void differentPathTemplatesOnTheSameEndpointStillCompare(@TempDir Path dir) {
         RunHistoryStore store = new RunHistoryStore(dir, 10, mapper);
         store.save(new RunView("previous", RunStatus.COMPLETED, null,
-                new LoadTestSpec("GET", "/api/users/{id}", "/api/users/7", null, 10, 15),
-                1000, 15, summary(30), List.of(), List.of(), List.of()));
+                LoadTestSpec.single("GET", "/api/users/{id}", "/api/users/7", null, 10, 15),
+                1000, 15, summary(30), List.of(), List.of(), List.of(), List.of()));
 
-        LoadTestSpec now = new LoadTestSpec("GET", "/api/users/{id}", "/api/users/${int(1,20)}", null, 10, 15);
+        LoadTestSpec now = LoadTestSpec.single("GET", "/api/users/{id}", "/api/users/${int(1,20)}", null, 10, 15);
         RunView baseline = store.baselineFor("current", now, 2000);
 
         assertNotNull(baseline);
@@ -106,14 +106,14 @@ class RunHistoryStoreTest {
         store.save(run("light", 1000, RunStatus.COMPLETED, "GET", "/api/users/{id}", 30, 5));
         store.save(run("heavy", 2000, RunStatus.COMPLETED, "GET", "/api/users/{id}", 90, 40));
 
-        LoadTestSpec at40 = new LoadTestSpec("GET", "/api/users/{id}", "/api/users/1", null, 40, 15);
-        LoadTestSpec at5 = new LoadTestSpec("GET", "/api/users/{id}", "/api/users/1", null, 5, 15);
+        LoadTestSpec at40 = LoadTestSpec.single("GET", "/api/users/{id}", "/api/users/1", null, 40, 15);
+        LoadTestSpec at5 = LoadTestSpec.single("GET", "/api/users/{id}", "/api/users/1", null, 5, 15);
 
         // Latency is a function of load, so only the run at the same load counts.
         assertEquals("heavy", store.baselineFor("current", at40, 3000).id());
         assertEquals("light", store.baselineFor("current", at5, 3000).id());
         assertNull(store.baselineFor("current",
-                new LoadTestSpec("GET", "/api/users/{id}", "/api/users/1", null, 99, 15), 3000));
+                LoadTestSpec.single("GET", "/api/users/{id}", "/api/users/1", null, 99, 15), 3000));
     }
 
     @Test
@@ -121,7 +121,7 @@ class RunHistoryStoreTest {
         RunHistoryStore store = new RunHistoryStore(dir, 10, mapper);
         store.save(run("other", 1000, RunStatus.COMPLETED, "POST", "/api/orders", 30));
 
-        LoadTestSpec spec = new LoadTestSpec("GET", "/api/hello", "/api/hello", null, 10, 15);
+        LoadTestSpec spec = LoadTestSpec.single("GET", "/api/hello", "/api/hello", null, 10, 15);
 
         assertNull(store.baselineFor("current", spec, 2000));
     }
@@ -163,11 +163,12 @@ class RunHistoryStoreTest {
     private static RunView run(String id, long startedAt, RunStatus status,
             String method, String pattern, long p95, int concurrency) {
         return new RunView(id, status, null,
-                new LoadTestSpec(method, pattern, pattern, null, concurrency, 15),
+                LoadTestSpec.single(method, pattern, pattern, null, concurrency, 15),
                 startedAt, 15, summary(p95),
                 List.of(new RunView.TimelinePoint(0, 100, 0, 20, p95)),
                 List.of(new ServerMetricsSample(0, Map.of("tomcatThreadsBusy", 4.0))),
-                List.of(new SlowQuery("select 1", 2, 120, 200)));
+                List.of(new SlowQuery("select 1", 2, 120, 200)),
+                List.of());
     }
 
     private static RunView.Summary summary(long p95) {
