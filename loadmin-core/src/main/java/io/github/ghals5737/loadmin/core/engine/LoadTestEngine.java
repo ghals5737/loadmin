@@ -98,18 +98,20 @@ public class LoadTestEngine {
         return start(spec, RunOptions.none());
     }
 
-    /** @deprecated use {@link #start(LoadTestSpec, RunOptions)} */
+    /**
+     * @param headers sent with every request of the run
+     * @deprecated use {@link #start(LoadTestSpec, RunOptions)}
+     */
     @Deprecated
     public LoadTestRun start(LoadTestSpec spec, Map<String, String> headers) {
         return start(spec, new RunOptions(headers, Map.of()));
     }
 
     /**
-     * @param headers sent with every request of the run — an API that needs a
-     *                bearer token is otherwise only measurable as a 401. These
-     *                are deliberately <em>not</em> part of {@link LoadTestSpec}:
-     *                the spec is what gets written to history, and a token has
-     *                no business ending up in a file on disk.
+     * @param options headers to send and value lists the templates draw from.
+     *                Deliberately not part of {@link LoadTestSpec}: the spec is
+     *                what gets written to history, and neither a bearer token
+     *                nor a list of real identifiers belongs in a file on disk.
      */
     public LoadTestRun start(LoadTestSpec spec, RunOptions options) {
         validate(spec);

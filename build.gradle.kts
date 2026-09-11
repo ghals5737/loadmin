@@ -39,6 +39,12 @@ subprojects {
         return@subprojects
     }
 
+    // Javadoc only ran while publishing, so a broken @param first showed up in
+    // the release workflow, after the tag was already pushed.
+    tasks.named("check") {
+        dependsOn(tasks.named("javadoc"))
+    }
+
     apply(plugin = "com.vanniktech.maven.publish")
 
     extensions.configure<MavenPublishBaseExtension> {
