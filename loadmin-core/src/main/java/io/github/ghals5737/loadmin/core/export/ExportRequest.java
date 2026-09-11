@@ -1,5 +1,6 @@
 package io.github.ghals5737.loadmin.core.export;
 
+import java.util.List;
 import java.util.Map;
 
 import io.github.ghals5737.loadmin.core.engine.LoadTestSpec;
@@ -14,14 +15,20 @@ import io.github.ghals5737.loadmin.core.engine.LoadTestSpec;
  * @param headers sent with every request; secrets among them are read from the
  *                environment by the generated script rather than written into it
  */
-public record ExportRequest(String baseUrl, LoadTestSpec spec, Map<String, String> headers) {
+public record ExportRequest(String baseUrl, LoadTestSpec spec, Map<String, String> headers,
+        Map<String, List<String>> valueLists) {
 
     public ExportRequest {
         headers = headers == null ? Map.of() : Map.copyOf(headers);
+        valueLists = valueLists == null ? Map.of() : Map.copyOf(valueLists);
     }
 
     public ExportRequest(String baseUrl, LoadTestSpec spec) {
-        this(baseUrl, spec, Map.of());
+        this(baseUrl, spec, Map.of(), Map.of());
+    }
+
+    public ExportRequest(String baseUrl, LoadTestSpec spec, Map<String, String> headers) {
+        this(baseUrl, spec, headers, Map.of());
     }
 
     /**

@@ -25,6 +25,8 @@ import io.github.ghals5737.loadmin.core.template.ValueTemplate.Placeholder;
 public class GatlingScriptExporter implements ScriptExporter {
 
     private static final String CLASS_NAME = "LoadminSimulation";
+    /** Beyond this many choices the values get their own field. */
+    private static final int INLINE_VALUES = 5;
 
     @Override
     public String id() {
@@ -43,10 +45,12 @@ public class GatlingScriptExporter implements ScriptExporter {
         List<String[]> counters = new ArrayList<>();
         List<String[]> steps = new ArrayList<>();
         for (LoadTestSpec.Step step : spec.steps()) {
-            ValueTemplate path = ValueTemplate.compile(step.pathTemplate(), ValueTemplate.Mode.PATH);
+            ValueTemplate path = ValueTemplate.compile(
+                    step.pathTemplate(), ValueTemplate.Mode.PATH, request.valueLists());
             boolean hasBody = step.bodyTemplate() != null && !step.bodyTemplate().isBlank();
             ValueTemplate body = hasBody
-                    ? ValueTemplate.compile(step.bodyTemplate(), ValueTemplate.Mode.BODY)
+                    ? ValueTemplate.compile(
+                            step.bodyTemplate(), ValueTemplate.Mode.BODY, request.valueLists())
                     : null;
             steps.add(new String[] {
                     step.name(),
@@ -77,7 +81,10 @@ public class GatlingScriptExporter implements ScriptExporter {
         if (used.contains(Kind.INT) || used.contains(Kind.ALPHA) || used.contains(Kind.PICK)) {
             out.append("import java.util.concurrent.ThreadLocalRandom;\n");
         }
-        if (!counters.isEmpty()) {
+        if (counters.stream().anyMatch(c -> c[0].startsWith("VALUES_"))) {
+            out.append("import java.util.List;\n");
+        }
+        if (counters.stream().anyMatch(c -> !c[0].startsWith("VALUES_"))) {
             out.append("import java.util.concurrent.atomic.AtomicLong;\n");
         }
         out.append("\nimport io.gatling.javaapi.core.ScenarioBuilder;\n")
@@ -86,8 +93,13 @@ public class GatlingScriptExporter implements ScriptExporter {
                 .append("public class ").append(CLASS_NAME).append(" extends Simulation {\n\n");
 
         for (String[] counter : counters) {
-            out.append("    private static final AtomicLong ").append(counter[0])
-                    .append(" = new AtomicLong(").append(counter[1]).append("L);\n");
+            if (counter[0].startsWith("VALUES_")) {
+                out.append("    private static final List<String> ").append(counter[0])
+                        .append(" = ").append(counter[1]).append(";\n");
+            } else {
+                out.append("    private static final AtomicLong ").append(counter[0])
+                        .append(" = new AtomicLong(").append(counter[1]).append("L);\n");
+            }
         }
         if (!counters.isEmpty()) {
             out.append('\n');
@@ -148,7 +160,16 @@ public class GatlingScriptExporter implements ScriptExporter {
                 case UUID -> joiner.add("UUID.randomUUID()");
                 case NOW -> joiner.add("System.currentTimeMillis()");
                 case ALPHA -> joiner.add("randomAlpha(" + args.get(0) + ")");
-                case PICK -> joiner.add("pick(" + javaList(args) + ")");
+                case PICK -> joiner.add(args.size() > INLINE_VALUES
+                        ? "pick(" + hoist(counters, args) + ")"
+                        : "pick(" + javaList(args) + ")");
+                case ROTATE -> {
+                    String values = hoist(counters, args);
+                    String variable = "CYCLE_" + (counters.size() + 1);
+                    counters.add(new String[] { variable, "0" });
+                    joiner.add(values + ".get((int) Math.floorMod(" + variable
+                            + ".getAndIncrement(), " + values + ".size()))");
+                }
                 case SEQ -> {
                     String variable = "SEQ_" + (counters.size() + 1);
                     counters.add(new String[] { variable, args.get(0) });
@@ -183,6 +204,13 @@ public class GatlingScriptExporter implements ScriptExporter {
                     .append("        return values[ThreadLocalRandom.current().nextInt(values.length)];\n")
                     .append("    }\n\n");
         }
+    }
+
+    /** Lifts a long list of values out of the request into a field. */
+    private static String hoist(List<String[]> counters, List<String> values) {
+        String variable = "VALUES_" + (counters.size() + 1);
+        counters.add(new String[] { variable, "List.of(" + javaList(values) + ")" });
+        return variable;
     }
 
     private static String javaList(List<String> values) {

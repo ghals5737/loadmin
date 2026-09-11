@@ -1,5 +1,8 @@
 package io.github.ghals5737.loadmin.autoconfigure;
 
+import java.util.List;
+import java.util.Map;
+
 import io.github.ghals5737.loadmin.core.LoadTestEndpointScanner;
 import io.github.ghals5737.loadmin.core.template.ValueTemplate;
 
@@ -35,13 +38,18 @@ class TargetValidator {
      *                                  the mapping pattern
      */
     ValueTemplate check(String httpMethod, String pathPattern, String path) {
+        return check(httpMethod, pathPattern, path, Map.of());
+    }
+
+    ValueTemplate check(String httpMethod, String pathPattern, String path,
+            Map<String, List<String>> valueLists) {
         boolean known = scanner.scan().stream().anyMatch(endpoint ->
                 endpoint.path().equals(pathPattern)
                         && (endpoint.httpMethod().equals("ANY") || endpoint.httpMethod().equals(httpMethod)));
         if (!known) {
             throw new IllegalArgumentException("not a @LoadTest endpoint: " + httpMethod + " " + pathPattern);
         }
-        ValueTemplate template = ValueTemplate.compile(path, ValueTemplate.Mode.PATH);
+        ValueTemplate template = ValueTemplate.compile(path, ValueTemplate.Mode.PATH, valueLists);
         PathPattern pattern = PATTERN_PARSER.parse(pathPattern);
         int samples = template.dynamic() ? VALIDATION_SAMPLES : 1;
         for (int i = 0; i < samples; i++) {

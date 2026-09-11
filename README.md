@@ -19,14 +19,14 @@ latency graph while the load is running.
 
 ```kotlin
 // build.gradle.kts
-implementation("io.github.ghals5737:loadmin-spring-boot-starter:0.2.2")
+implementation("io.github.ghals5737:loadmin-spring-boot-starter:0.3.0")
 ```
 
 ```xml
 <dependency>
     <groupId>io.github.ghals5737</groupId>
     <artifactId>loadmin-spring-boot-starter</artifactId>
-    <version>0.2.2</version>
+    <version>0.3.0</version>
 </dependency>
 ```
 
@@ -78,6 +78,8 @@ per request:
 |-------------|---------|
 | `${int(1,20)}` | a random integer, both bounds included |
 | `${cycle(1,500)}` | the same range walked in order and wrapped |
+| `${pick(@ids)}` | a value drawn from a named list |
+| `${cycle(@ids)}` | that list walked in order |
 | `${seq}`, `${seq(1000)}` | an increasing counter, shared by all virtual users |
 | `${uuid}` | a random UUID |
 | `${alpha(8)}` | a random `[a-z0-9]` string |
@@ -134,6 +136,26 @@ One thing changes on the way out: k6 gives every virtual user its own JS
 runtime, so `${seq}` becomes a per-user counter (each starting far enough apart
 to stay distinct). The generated script says so. Gatling runs in one JVM and
 keeps a single shared sequence.
+
+### Endpoints whose ids are not numbers
+
+`${int(1,20)}` only helps when the path variable is a number. For real
+identifiers, paste a list into **Value lists** on the config screen and point the
+template at it:
+
+```
+ids = hg240901-a123459, hg240902-b234567, hg240903-c345678
+```
+
+```java
+@LoadTest(path = "/api/examinees/${cycle(@ids)}")
+@GetMapping("/api/examinees/{id}")
+```
+
+A query result pastes straight in — one list may span several lines. Like
+headers, the values belong to the run: history keeps `${cycle(@ids)}`, never the
+identifiers behind it. Exported scripts do carry them, since a script without
+its data cannot run, and say so in a comment above the list.
 
 ### Requests that need a token
 

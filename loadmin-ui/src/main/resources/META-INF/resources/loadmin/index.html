@@ -284,6 +284,18 @@
         </div>
       </details>
 
+      <details class="headers" id="cfgListsBox">
+        <summary>Value lists</summary>
+        <textarea id="cfgLists" rows="3" spellcheck="false"
+                  placeholder="ids = hg240901-a123459, hg240902-b234567, hg240903-c345678"></textarea>
+        <div class="hint">
+          One list per line, <code>name = a, b, c</code> — newlines inside a list work too.
+          Reference them as <code>${pick(@ids)}</code> (random) or <code>${cycle(@ids)}</code>
+          (in order). Paste a query result straight in. Kept in the page only: history stores
+          the reference, never the values.
+        </div>
+      </details>
+
       <div class="add-step">
         <select id="cfgAddStep"></select>
         <button id="cfgAddStepBtn" type="button">Add step</button>
@@ -603,6 +615,11 @@ function fillAddStepOptions() {
   $('cfgAddStepBtn').disabled = !allEndpoints.length;
 }
 
+/* Editing a list changes what every step renders. */
+$('cfgLists').addEventListener('input', function () {
+  scenario.forEach(function (step, index) { schedulePreview(index); });
+});
+
 $('cfgAddStepBtn').addEventListener('click', function () {
   var ep = allEndpoints[parseInt($('cfgAddStep').value, 10)];
   if (!ep) { return; }
@@ -678,6 +695,30 @@ function headerPayload() {
   return headers;
 }
 
+/* "name = a, b, c" lines to {name: [values]}. A list may also be split over
+   several lines, so a pasted column of ids works as it is. */
+function listPayload() {
+  var lists = {};
+  var current = null;
+  ($('cfgLists').value || '').split('\n').forEach(function (line) {
+    var at = line.indexOf('=');
+    if (at > 0) {
+      current = line.slice(0, at).trim();
+      lists[current] = [];
+      line = line.slice(at + 1);
+    }
+    if (!current) { return; }
+    line.split(',').forEach(function (value) {
+      var trimmed = value.trim();
+      if (trimmed) { lists[current].push(trimmed); }
+    });
+  });
+  Object.keys(lists).forEach(function (name) {
+    if (!lists[name].length) { delete lists[name]; }
+  });
+  return lists;
+}
+
 function stepPayload() {
   return scenario.map(function (step) {
     return {
@@ -720,7 +761,8 @@ function runPreview(index) {
       httpMethod: step.endpoint.httpMethod,
       pathPattern: step.endpoint.path,
       path: (step.path || '').trim(),
-      body: step.body
+      body: step.body,
+      valueLists: listPayload()
     })
   })
     .then(function (res) {
@@ -767,6 +809,7 @@ $('cfgStart').addEventListener('click', function () {
     body: JSON.stringify({
       steps: stepPayload(),
       headers: headerPayload(),
+      valueLists: listPayload(),
       concurrency: parseInt($('cfgConcurrency').value, 10),
       durationSeconds: parseInt($('cfgDuration').value, 10)
     })
@@ -795,6 +838,7 @@ function exportScript(format) {
     body: JSON.stringify({
       steps: stepPayload(),
       headers: headerPayload(),
+      valueLists: listPayload(),
       concurrency: parseInt($('cfgConcurrency').value, 10),
       durationSeconds: parseInt($('cfgDuration').value, 10)
     })

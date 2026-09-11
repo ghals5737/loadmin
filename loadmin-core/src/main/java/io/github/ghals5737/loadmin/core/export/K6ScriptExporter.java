@@ -26,6 +26,8 @@ import io.github.ghals5737.loadmin.core.template.ValueTemplate.Placeholder;
 public class K6ScriptExporter implements ScriptExporter {
 
     private static final long SEQ_STRIDE_PER_VU = 1_000_000L;
+    /** Beyond this many choices the values get their own declaration. */
+    private static final int INLINE_VALUES = 5;
 
     @Override
     public String id() {
@@ -44,10 +46,12 @@ public class K6ScriptExporter implements ScriptExporter {
         List<String[]> counters = new ArrayList<>();
         List<String[]> steps = new ArrayList<>();
         for (LoadTestSpec.Step step : spec.steps()) {
-            ValueTemplate path = ValueTemplate.compile(step.pathTemplate(), ValueTemplate.Mode.PATH);
+            ValueTemplate path = ValueTemplate.compile(
+                    step.pathTemplate(), ValueTemplate.Mode.PATH, request.valueLists());
             boolean hasBody = step.bodyTemplate() != null && !step.bodyTemplate().isBlank();
             ValueTemplate body = hasBody
-                    ? ValueTemplate.compile(step.bodyTemplate(), ValueTemplate.Mode.BODY)
+                    ? ValueTemplate.compile(
+                            step.bodyTemplate(), ValueTemplate.Mode.BODY, request.valueLists())
                     : null;
             steps.add(new String[] {
                     step.name(),
@@ -72,6 +76,10 @@ public class K6ScriptExporter implements ScriptExporter {
                     .append("// cannot be shared. Each user counts on its own — ${seq} values are kept\n")
                     .append("// ").append(SEQ_STRIDE_PER_VU)
                     .append(" apart so they stay distinct, and ${cycle} walks its range per user.\n");
+        }
+        if (!counters.isEmpty() && counters.stream().anyMatch(c -> c[0].startsWith("values_"))) {
+            out.append("//\n// The value lists below came from the run. They are real data — "
+                    + "look at them\n// before committing this file.\n");
         }
         headers.keySet().stream().filter(ExportRequest::secret).forEach(name ->
                 out.append("//\n// ").append(name).append(" is read from the environment, not stored here:\n")
@@ -151,7 +159,15 @@ public class K6ScriptExporter implements ScriptExporter {
                 case UUID -> joiner.add("uuid()");
                 case NOW -> joiner.add("Date.now()");
                 case ALPHA -> joiner.add("randomAlpha(" + args.get(0) + ")");
-                case PICK -> joiner.add("pick([" + jsList(args) + "])");
+                case PICK -> joiner.add(args.size() > INLINE_VALUES
+                        ? "pick(" + hoist(counters, args) + ")"
+                        : "pick([" + jsList(args) + "])");
+                case ROTATE -> {
+                    String values = hoist(counters, args);
+                    String variable = "cycle_" + (counters.size() + 1);
+                    counters.add(new String[] { variable, "0" });
+                    joiner.add(values + "[" + variable + "++ % " + values + ".length]");
+                }
                 case SEQ -> {
                     String variable = "seq_" + (counters.size() + 1);
                     counters.add(new String[] {
@@ -195,6 +211,13 @@ public class K6ScriptExporter implements ScriptExporter {
             out.append("\nfunction pick(values) {\n")
                     .append("  return values[Math.floor(Math.random() * values.length)];\n}\n");
         }
+    }
+
+    /** Lifts a long list of values out of the request into a declaration. */
+    private static String hoist(List<String[]> counters, List<String> values) {
+        String variable = "values_" + (counters.size() + 1);
+        counters.add(new String[] { variable, "[" + jsList(values) + "]" });
+        return variable;
     }
 
     private static String jsList(List<String> values) {

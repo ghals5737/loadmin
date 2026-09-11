@@ -85,6 +85,7 @@ loadmin/
 - [x] Maven Central 배포 파이프라인 (vanniktech 플러그인 + 태그 푸시 GitHub Actions, 첫 릴리스는 Portal에서 확인 후 Publish)
 
 ### Phase 3 — 확장 (후순위)
+- [x] 값 목록 공급 (`${pick(@ids)}` / `${cycle(@ids)}` — UI에 붙여넣고 참조, 값은 히스토리에 안 남김)
 - [x] k6/Gatling 스크립트 export (진지 모드 — 자체 완결 k6 스크립트 + Gatling Java DSL, 실제 실행/컴파일 검증)
 - [x] 느린 쿼리 캡처 연동 (DataSource 프록시, run 중에만 수집, 기본 off)
 - [x] 시나리오 (여러 API 순차 호출 — 단일 엔드포인트도 1단계 시나리오로 통합, 단계별 지표)

@@ -2,6 +2,7 @@ package io.github.ghals5737.loadmin.core.template;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
@@ -15,6 +16,11 @@ import java.util.function.Supplier;
  * Supported generators: {@code int(min,max)}, {@code cycle(min,max)},
  * {@code seq}, {@code seq(start)}, {@code uuid}, {@code alpha(length)},
  * {@code pick(a|b|c)}, {@code now}.
+ *
+ * <p>{@code pick} and {@code cycle} also take a named list — {@code ${pick(@ids)}}
+ * draws from it, {@code ${cycle(@ids)}} walks it in order — so a path variable
+ * can be fed two hundred real identifiers without any of them being written
+ * into the template.
  *
  * <p>{@code int} and {@code cycle} both stay inside a range — the difference is
  * coverage. {@code int} draws at random, so over 500 requests some keys in a
@@ -50,7 +56,7 @@ public final class ValueTemplate {
 
     /** A generator that a placeholder can name. */
     public enum Kind {
-        INT, SEQ, CYCLE, UUID, ALPHA, PICK, NOW
+        INT, SEQ, CYCLE, UUID, ALPHA, PICK, ROTATE, NOW
     }
 
     /** One piece of a parsed template: fixed text, or a value to generate. */
@@ -90,6 +96,15 @@ public final class ValueTemplate {
      */
     @SuppressWarnings("unchecked")
     public static ValueTemplate compile(String source, Mode mode) {
+        return compile(source, mode, Map.of());
+    }
+
+    /**
+     * @param lists named value lists a placeholder may reference as
+     *              {@code ${pick(@name)}} or {@code ${cycle(@name)}}
+     */
+    @SuppressWarnings("unchecked")
+    public static ValueTemplate compile(String source, Mode mode, Map<String, List<String>> lists) {
         if (source == null) {
             throw new IllegalArgumentException("template must not be null");
         }
@@ -113,7 +128,7 @@ public final class ValueTemplate {
                     parts.add(new Literal(literal.toString()));
                     literal.setLength(0);
                 }
-                parts.add(placeholder(source.substring(i + 2, end).trim(), mode));
+                parts.add(placeholder(source.substring(i + 2, end).trim(), mode, lists));
                 dynamic = true;
                 i = end + 1;
                 continue;
@@ -166,7 +181,7 @@ public final class ValueTemplate {
     }
 
     /** Parses and validates one {@code ${...}} into its structured form. */
-    private static Placeholder placeholder(String expr, Mode mode) {
+    private static Placeholder placeholder(String expr, Mode mode, Map<String, List<String>> lists) {
         if (expr.isEmpty()) {
             throw new IllegalArgumentException("empty ${} in template");
         }
@@ -195,8 +210,12 @@ public final class ValueTemplate {
             }
             case "int":
                 return range(Kind.INT, expr, hasArgs ? args : null);
-            case "cycle":
-                return range(Kind.CYCLE, expr, hasArgs ? args : null);
+            case "cycle": {
+                List<String> referenced = referencedList(args, expr, mode, lists);
+                return referenced == null
+                        ? range(Kind.CYCLE, expr, hasArgs ? args : null)
+                        : new Placeholder(Kind.ROTATE, referenced);
+            }
             case "alpha": {
                 long length = hasArgs && !args.isBlank() ? parseLong(args, expr) : 0L;
                 if (length < 1 || length > MAX_ALPHA_LENGTH) {
@@ -209,6 +228,10 @@ public final class ValueTemplate {
                 if (!hasArgs) {
                     throw new IllegalArgumentException(
                             "${" + expr + "} needs choices, e.g. ${pick(a|b|c)}");
+                }
+                List<String> referenced = referencedList(args, expr, mode, lists);
+                if (referenced != null) {
+                    return new Placeholder(Kind.PICK, referenced);
                 }
                 String[] choices = args.split("\\|", -1);
                 for (String choice : choices) {
@@ -225,6 +248,30 @@ public final class ValueTemplate {
                 throw new IllegalArgumentException(
                         "unknown generator ${" + expr + "}; supported: " + SUPPORTED);
         }
+    }
+
+    /**
+     * Resolves an {@code @name} argument to its values, or {@code null} when the
+     * argument is not a reference. Resolving here rather than at render time
+     * means a list's values go through the same check as choices written out by
+     * hand — one of them must not be able to leave the endpoint either.
+     */
+    private static List<String> referencedList(String args, String expr, Mode mode,
+            Map<String, List<String>> lists) {
+        String trimmed = args == null ? "" : args.trim();
+        if (!trimmed.startsWith("@")) {
+            return null;
+        }
+        String name = trimmed.substring(1).trim();
+        List<String> values = lists.get(name);
+        if (values == null) {
+            throw new IllegalArgumentException("${" + expr + "}: no value list named '" + name
+                    + "'" + (lists.isEmpty() ? "" : "; defined: " + lists.keySet()));
+        }
+        if (mode == Mode.PATH) {
+            values.forEach(value -> requirePathSafe(value, expr));
+        }
+        return values;
     }
 
     /** Parses the {@code (min,max)} shared by {@code int} and {@code cycle}. */
@@ -281,6 +328,11 @@ public final class ValueTemplate {
             case PICK: {
                 String[] choices = args.toArray(new String[0]);
                 return () -> choices[ThreadLocalRandom.current().nextInt(choices.length)];
+            }
+            case ROTATE: {
+                String[] values = args.toArray(new String[0]);
+                AtomicLong counter = new AtomicLong();
+                return () -> values[(int) Math.floorMod(counter.getAndIncrement(), values.length)];
             }
             default:
                 throw new IllegalStateException("unhandled generator " + placeholder.kind());

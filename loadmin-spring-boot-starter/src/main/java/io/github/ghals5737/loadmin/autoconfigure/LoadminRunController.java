@@ -8,7 +8,7 @@ import io.github.ghals5737.loadmin.core.engine.LoadTestEngine;
 import io.github.ghals5737.loadmin.core.engine.LoadTestRun;
 import io.github.ghals5737.loadmin.core.engine.LoadTestRunRegistry;
 import io.github.ghals5737.loadmin.core.engine.LoadTestSpec;
-import io.github.ghals5737.loadmin.core.engine.RequestHeaders;
+import io.github.ghals5737.loadmin.core.engine.RunOptions;
 import io.github.ghals5737.loadmin.core.engine.RunView;
 import io.github.ghals5737.loadmin.core.template.ValueTemplate;
 
@@ -53,7 +53,7 @@ public class LoadminRunController {
      */
     public record StartRunRequest(List<StepRequest> steps, String httpMethod, String pathPattern,
             String path, String body, Integer concurrency, Integer durationSeconds,
-            Map<String, String> headers) {
+            Map<String, String> headers, Map<String, List<String>> valueLists) {
     }
 
     @PostMapping("/loadmin/api/runs")
@@ -63,21 +63,23 @@ public class LoadminRunController {
             return badRequest("a run needs at least one step");
         }
         try {
+            RunOptions options = new RunOptions(request.headers(), request.valueLists());
             List<LoadTestSpec.Step> checked = new ArrayList<>(steps.size());
             for (StepRequest step : steps) {
-                checked.add(check(step));
+                checked.add(check(step, options.valueLists()));
             }
             LoadTestSpec spec = new LoadTestSpec(checked,
                     request.concurrency() == null ? 10 : request.concurrency(),
                     request.durationSeconds() == null ? 15 : request.durationSeconds());
-            LoadTestRun run = engine.start(spec, RequestHeaders.checked(request.headers()));
+            LoadTestRun run = engine.start(spec, options);
             return ResponseEntity.ok(Map.of("id", run.id()));
         } catch (IllegalArgumentException e) {
             return badRequest(e.getMessage());
         }
     }
 
-    public record PreviewRequest(String httpMethod, String pathPattern, String path, String body) {
+    public record PreviewRequest(String httpMethod, String pathPattern, String path, String body,
+            Map<String, List<String>> valueLists) {
     }
 
     /**
@@ -90,14 +92,18 @@ public class LoadminRunController {
             return badRequest("httpMethod, pathPattern and path are required");
         }
         try {
-            targets.check(request.httpMethod().toUpperCase(), request.pathPattern(), request.path());
+            Map<String, List<String>> lists = new RunOptions(Map.of(), request.valueLists())
+                    .valueLists();
+            targets.check(request.httpMethod().toUpperCase(), request.pathPattern(),
+                    request.path(), lists);
             // A fresh template for the samples: the validator rendered from its
             // own copy, which would leave ${cycle} and ${seq} mid-count here even
             // though the run itself starts from the beginning.
-            ValueTemplate path = ValueTemplate.compile(request.path(), ValueTemplate.Mode.PATH);
+            ValueTemplate path = ValueTemplate.compile(
+                    request.path(), ValueTemplate.Mode.PATH, lists);
             ValueTemplate body = request.body() == null || request.body().isBlank()
                     ? null
-                    : ValueTemplate.compile(request.body(), ValueTemplate.Mode.BODY);
+                    : ValueTemplate.compile(request.body(), ValueTemplate.Mode.BODY, lists);
             return ResponseEntity.ok(Map.of(
                     "paths", renderSamples(path),
                     "bodies", body == null ? List.of() : renderSamples(body)));
@@ -145,12 +151,12 @@ public class LoadminRunController {
                 request.path(), request.body()));
     }
 
-    private LoadTestSpec.Step check(StepRequest step) {
+    private LoadTestSpec.Step check(StepRequest step, Map<String, List<String>> valueLists) {
         if (step.httpMethod() == null || step.pathPattern() == null || step.path() == null) {
             throw new IllegalArgumentException("every step needs httpMethod, pathPattern and path");
         }
         String method = step.httpMethod().toUpperCase();
-        targets.check(method, step.pathPattern(), step.path());
+        targets.check(method, step.pathPattern(), step.path(), valueLists);
         return new LoadTestSpec.Step(step.name(), method, step.pathPattern(), step.path(), step.body());
     }
 

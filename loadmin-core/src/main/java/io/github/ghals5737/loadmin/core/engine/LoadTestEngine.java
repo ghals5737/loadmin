@@ -95,7 +95,13 @@ public class LoadTestEngine {
     }
 
     public LoadTestRun start(LoadTestSpec spec) {
-        return start(spec, Map.of());
+        return start(spec, RunOptions.none());
+    }
+
+    /** @deprecated use {@link #start(LoadTestSpec, RunOptions)} */
+    @Deprecated
+    public LoadTestRun start(LoadTestSpec spec, Map<String, String> headers) {
+        return start(spec, new RunOptions(headers, Map.of()));
     }
 
     /**
@@ -105,10 +111,10 @@ public class LoadTestEngine {
      *                the spec is what gets written to history, and a token has
      *                no business ending up in a file on disk.
      */
-    public LoadTestRun start(LoadTestSpec spec, Map<String, String> headers) {
+    public LoadTestRun start(LoadTestSpec spec, RunOptions options) {
         validate(spec);
-        List<CompiledStep> request = compile(spec);
-        Map<String, String> requestHeaders = Map.copyOf(headers);
+        List<CompiledStep> request = compile(spec, options.valueLists());
+        Map<String, String> requestHeaders = options.headers();
         LoadTestRun run = new LoadTestRun(UUID.randomUUID().toString().substring(0, 8), spec);
         registry.add(run);
         Thread controller = new Thread(() -> execute(run, request, requestHeaders),
@@ -137,13 +143,15 @@ public class LoadTestEngine {
      * Parses the request templates up front, so a malformed one fails the start
      * call (surfacing as a 400) instead of the run itself.
      */
-    private List<CompiledStep> compile(LoadTestSpec spec) {
+    private List<CompiledStep> compile(LoadTestSpec spec, Map<String, List<String>> valueLists) {
         List<CompiledStep> compiled = new ArrayList<>(spec.steps().size());
         for (LoadTestSpec.Step step : spec.steps()) {
-            ValueTemplate path = ValueTemplate.compile(step.pathTemplate(), ValueTemplate.Mode.PATH);
+            ValueTemplate path = ValueTemplate.compile(
+                    step.pathTemplate(), ValueTemplate.Mode.PATH, valueLists);
             ValueTemplate body = step.bodyTemplate() == null || step.bodyTemplate().isBlank()
                     ? null
-                    : ValueTemplate.compile(step.bodyTemplate(), ValueTemplate.Mode.BODY);
+                    : ValueTemplate.compile(
+                            step.bodyTemplate(), ValueTemplate.Mode.BODY, valueLists);
             compiled.add(new CompiledStep(HttpMethod.valueOf(step.httpMethod()), path, body));
         }
         return List.copyOf(compiled);
